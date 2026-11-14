@@ -207,7 +207,7 @@ body::after{width:460px;height:460px;bottom:-220px;right:-200px;background:radia
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:none}}
 .modal-title{font-size:17px;font-weight:700;text-align:center}
 .modal-hint{font-size:12px;color:var(--ink3);text-align:center;line-height:1.7;margin:8px 0 16px}
-.img-box{max-height:46vh;overflow:auto;background:#fdf5f7;border-radius:14px;border:1px solid var(--line)}
+.img-box{max-height:58vh;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;background:#fdf5f7;border-radius:14px;border:1px solid var(--line)}
 .img-box img{width:100%;display:block}
 .modal-btns{display:flex;gap:10px;margin-top:16px}
 .modal-btns .btn{height:46px;font-size:14px}

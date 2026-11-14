@@ -955,20 +955,22 @@
     line(ctx,'BLOOM LAB  ·  给自己的一次温柔观察',X,y,19,'#b9a3ad',400);
     return y+30;
   }
-  function buildCanvas(){
+  function isWeChat(){return /MicroMessenger/i.test((typeof navigator!=='undefined'&&navigator.userAgent)||'')}
+  var saveLabel=isWeChat()?'生成报告图片':'下载报告图片';
+  function buildCanvas(small){
     var W=750;
     var tmp=document.createElement('canvas');tmp.width=W;tmp.height=5600;
     var tc=tmp.getContext('2d');
     var endY=paint(tc,W,5600),H=Math.ceil(endY)+20;
-    var S=Math.min(2,Math.sqrt(12000000/(W*H)),6000/H);
-    S=Math.max(1,S);
+    var cap=small?7000000:12000000,maxS=small?1.5:2;
+    var S=Math.max(1,Math.min(maxS,Math.sqrt(cap/(W*H)),6000/H));
     var c=document.createElement('canvas');c.width=Math.round(W*S);c.height=Math.round(H*S);
     var ctx=c.getContext('2d');ctx.scale(S,S);
     paint(ctx,W,H);
     return c;
   }
   function triggerDownload(){
-    if(!blobUrl)return;
+    if(isWeChat()||!blobUrl)return;
     var a=document.createElement('a');a.href=blobUrl;
     a.download='自我观察报告_'+(mode==='ALL'?'全部维度':mode)+'_'+nickname+'_'+dateFile()+'.png';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
@@ -977,15 +979,38 @@
     var btn=this;btn.disabled=true;btn.textContent='正在生成图片…';
     setTimeout(function(){
       try{
-        var canvas=buildCanvas();
-        if(blobUrl)URL.revokeObjectURL(blobUrl);
+        var wx=isWeChat(),canvas=buildCanvas(wx);
+        if(wx){
+          var dataUrl=canvas.toDataURL('image/png');
+          if(dataUrl.length>4000000){
+            var jpg=canvas.toDataURL('image/jpeg',0.9);
+            if(jpg&&jpg.length>100)dataUrl=jpg;
+          }
+          if(!dataUrl||dataUrl.length<100)throw new Error('empty image');
+          if(blobUrl){try{URL.revokeObjectURL(blobUrl)}catch(e){}blobUrl=null}
+          $('reportImg').src=dataUrl;
+          $('modalTitle').textContent='长按图片保存到相册';
+          $('modalHint').innerHTML='微信内置浏览器不支持直接下载。请<b>长按下方图片</b> → 选择「保存图片」；<br>或点右上角 ··· → 「在浏览器打开」后重新下载。';
+          $('dlAgain').style.display='none';
+          $('imgModal').classList.add('on');
+          btn.disabled=false;btn.textContent=saveLabel;
+          return;
+        }
+        if(blobUrl){try{URL.revokeObjectURL(blobUrl)}catch(e){}}
         var finish=function(url){
-          blobUrl=url;$('reportImg').src=url;$('imgModal').classList.add('on');
-          triggerDownload();btn.disabled=false;btn.textContent='下载报告图片';
+          blobUrl=url;$('reportImg').src=url;
+          $('modalTitle').textContent='报告图片已生成';
+          $('modalHint').innerHTML='若下载没有自动开始，长按下方图片即可保存到相册';
+          $('dlAgain').style.display='';
+          $('imgModal').classList.add('on');
+          triggerDownload();btn.disabled=false;btn.textContent=saveLabel;
         };
         if(canvas.toBlob)canvas.toBlob(function(b){if(b)finish(URL.createObjectURL(b));else finish(canvas.toDataURL('image/png'))},'image/png');
         else finish(canvas.toDataURL('image/png'));
-      }catch(err){btn.disabled=false;btn.textContent='下载报告图片';alert('图片生成失败，请再试一次')}
+      }catch(err){
+        btn.disabled=false;btn.textContent=saveLabel;
+        alert(isWeChat()?'图片生成失败，请重试，或用右上角菜单在浏览器中打开':'图片生成失败，请再试一次');
+      }
     },60);
   });
   $('dlAgain').addEventListener('click',triggerDownload);
@@ -1025,5 +1050,6 @@
     isDemo=true;R=compute();renderReport();
     return true;
   }
+  $('saveBtn').textContent=saveLabel;
   if(!runDemo())renderHome();
 })();
