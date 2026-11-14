@@ -72,6 +72,16 @@ body::after{width:460px;height:460px;bottom:-220px;right:-200px;background:radia
 .dock-meta span{font-weight:700;color:var(--ink)}
 .dock-meta small{color:var(--ink3)}
 .start-dock .btn{height:52px}
+.demo-link{display:block;text-align:center;font-size:12px;color:var(--rose);text-decoration:none;margin:14px 0 0;padding:8px}
+.dim-block{border-top:3px solid #f7c9d9}
+.dim-block-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.dim-block-id{width:42px;height:42px;flex:none;border-radius:13px;background:linear-gradient(135deg,#fff0f5,#f7effc);color:var(--rose);font-size:13px;font-weight:800;display:grid;place-items:center}
+.dim-block-main h3{font-size:16px;margin:0 0 4px;font-weight:700}
+.dim-block-main .rep-sec-sub{margin:0;font-size:11px}
+.dim-block-desc{font-size:13px;line-height:1.8;color:var(--ink2);margin:0 0 18px;background:#fffafb;border-radius:12px;padding:12px 14px}
+.report-divider{text-align:center;margin:28px 0 16px;padding:18px 0 4px;border-top:1px dashed var(--line)}
+.report-divider span{display:block;font-size:17px;font-weight:700}
+.report-divider small{display:block;font-size:11px;color:var(--ink3);margin-top:6px}
 
 /* 问卷 */
 #s-quiz{padding-top:22px}

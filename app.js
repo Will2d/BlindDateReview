@@ -140,7 +140,7 @@
   function archiveGroupOf(q){var p=prefixOf(q.qid);for(var i=0;i<ARCHIVE_GROUPS.length;i++){if(ARCHIVE_GROUPS[i].prefixes.indexOf(p)>=0)return ARCHIVE_GROUPS[i].name}return '其他'}
 
   /* ---------- 状态 ---------- */
-  var nickname='',mode='ALL',QS=[],ans={},idx=0,locked=false,R=null,autoTimer=null,blobUrl=null,selected='ALL';
+  var nickname='',mode='ALL',QS=[],ans={},idx=0,locked=false,R=null,autoTimer=null,blobUrl=null,selected='ALL',isDemo=false;
 
   function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
   function pad(n){return n<10?'0'+n:''+n}
@@ -273,8 +273,8 @@
 
   /* ---------- 计分 ---------- */
   /* ---------- D1 基本客观条件：中性解读 ---------- */
-  function archiveAnalysis(r){
-    var A=ans;
+  function archiveAnalysis(r,denom){
+    var A=ans,totalReg=denom||r.regQs.length;
     var has=function(id){var v=A[id];return v!==undefined&&v!=='不便填写'};
     var g=function(id){return has(id)?String(A[id]):''};
     var inSet=function(id,arr){return arr.indexOf(g(id))>=0};
@@ -346,7 +346,7 @@
       {name:'定居一致性',state:cityState,note:'长期定居地是关键议题'},
       {name:'家庭支持与负担',state:famState,note:'照护与节日分配提前商量'},
       {name:'健康与兼容约束',state:'仅作兼容项',note:'不评优劣，只提示沟通节奏'},
-      {name:'资料完整度',state:r.filled.length>=30?'信息较完整':'可再补充',note:'已填 '+r.filled.length+' / '+r.regQs.length+' 项'}
+      {name:'资料完整度',state:r.filled.length>=totalReg*0.75?'信息较完整':'可再补充',note:'已填 '+r.filled.length+' / '+totalReg+' 项'}
     ];
 
     return {
@@ -438,10 +438,61 @@
       r.overallIndex=r.totalScore.score;
       r.level=levelName(r.overallIndex);
       r.desc=levelDesc('全部维度',r.overallIndex,'all');
+      r.dimReports=buildDimReports(r);
+      var d1reg=QS.filter(function(q){return q.dim==='D1'});
+      var d1filled=d1reg.filter(function(q){return ans[q.qid]!==undefined&&ans[q.qid]!=='不便填写'});
+      r.archive=archiveAnalysis({filled:d1filled,regQs:d1reg},40);
     }
     if(r.type==='archive')r.analysis=archiveAnalysis(r);
     r.advice=adviceFor(r);
     return r;
+  }
+  /* ---------- 综合报告：七份维度详报的数据 ---------- */
+  function dimensionAdvice(dim,valid,scoredQs,rank){
+    if(!valid.length)return META.D1.archiveTips.map(function(t,i){return {h:'梳理 '+(i+1),p:t}});
+    if(rank[rank.length-1].s>=4)return ADVANCED.slice(0,3);
+    var bottom=rank.slice(-3).reverse();
+    if(dim==='D2')return bottom.map(function(x){return {h:x.q.short+' · 从这里开始',p:D2TIPS[x.q.qid].low}});
+    var m=META[dim],n=m.advice.length,list=[],used={},per=scoredQs.length/n;
+    bottom.forEach(function(x){
+      var seg=Math.min(n-1,Math.floor(x.pos/per));
+      if(!used[seg]){used[seg]=1;list.push({h:x.q.short+' · 从这里开始',p:m.advice[seg]})}
+    });
+    for(var i=0;i<n&&list.length<3;i++)if(!used[i]){used[i]=1;list.push({h:'再看一件事',p:m.advice[i]})}
+    return list.slice(0,3);
+  }
+  function buildDimReports(r){
+    return DATA.dims.map(function(d){
+      var qs=QS.filter(function(q){return q.dim===d.id});
+      var scoredQs=qs.filter(function(q){return q.scored});
+      var regQs=qs.filter(function(q){return !q.scored});
+      var valid=scoredQs.map(function(q){return {q:q,s:r.scoreMap[q.qid],pos:q.pos}})
+        .filter(function(x){return x.s!==null&&x.s!==undefined});
+      var rank=valid.slice().sort(function(a,b){return b.s-a.s});
+      var segments;
+      if(d.scored===0){
+        segments=ARCHIVE_GROUPS.map(function(g){
+          var gq=regQs.filter(function(q){return archiveGroupOf(q)===g.name});
+          var f=gq.filter(function(q){return regValue(q)!=='未填写'&&regValue(q)!=='未作答'}).length;
+          var ratio=gq.length?f/gq.length:0;
+          return {name:g.name,avg:ratio*5,ratio:ratio};
+        });
+      }else segments=segmentsOf(d.id,scoredQs,r.scoreMap);
+      var row=r.dimScores.filter(function(x){return x.id===d.id})[0];
+      var index=row?row.index:0;
+      return {
+        id:d.id,name:d.name,total:d.total,scored:d.scored,index:index,
+        level:levelName(index),desc:levelDesc(d.name,index,'dim'),
+        scoredQs:scoredQs,regQs:regQs,valid:valid,rank:rank,segments:segments,
+        strengths:rank.slice(0,2).map(function(x){
+          var t=D2TIPS[x.q.qid];
+          return {h:x.q.short,p:t?t.high:'这一项相对更顺手，可以从这里继续建立自己的节奏。'};
+        }),
+        advice:dimensionAdvice(d.id,valid,scoredQs,rank),
+        gotScore:row?row.gotScore:0,maxScore:row?row.maxScore:0,halfCount:row?row.halfCount:0,
+        lowest:rank.length?rank[rank.length-1].q.short:'—'
+      };
+    });
   }
   function levelName(i){return i>=85?'从容稳定型':i>=70?'稳步顺畅型':i>=55?'蓄力成长型':'先慢下来型'}
   function levelDesc(name,i,type){
@@ -506,7 +557,7 @@
   function renderReport(){
     var name=mode==='ALL'?'全部维度综合':DATA.dims.filter(function(d){return d.id===mode})[0].name;
     $('repTitle').textContent=nickname+' · '+name+'报告';
-    $('repDate').textContent=dateStr()+' · '+QS.length+' 题 · '+(R.type==='archive'?'不计分档案':(R.type==='all'?'七维度综合':'单维度自评'));
+    $('repDate').textContent=dateStr()+' · '+QS.length+' 题 · '+(R.type==='archive'?'不计分档案':(R.type==='all'?'七维度综合':'单维度自评'))+(isDemo?' · 示例数据':'');
     var html=R.type==='archive'?archiveHTML():R.type==='all'?allHTML():dimHTML();
     $('reportBody').innerHTML=html;
     show('s-report');
@@ -604,6 +655,58 @@
     h+=disclaimerHTML('本页的「占优 / 留意」指客观信号与匹配成本，<b>不是对个人打分或排高低</b>；健康、民族、信仰、婚育等仅作为需要沟通的兼容项，不作优劣判断，也不评价任何一方的条件。档案含个人敏感信息，<b>下载图片后请自行保管</b>。');
     return h;
   }
+  function dimBlockHTML(dr){
+    var isD1=dr.scored===0,h='';
+    h+='<div class="card rep-card dim-block"><div class="dim-block-head">'+
+      '<div class="dim-block-id">'+dr.id+'</div><div class="dim-block-main"><h3>'+dr.name+'</h3>'+
+      '<p class="rep-sec-sub">'+dr.total+' 题 · 实得 '+dr.gotScore+' / '+dr.maxScore+' · 得分 '+dr.index+' / 100 · '+dr.level+'</p></div></div>'+
+      '<p class="dim-block-desc">'+esc(dr.desc)+'</p>';
+    h+='<div class="arch-gname">'+(isD1?'六组信息填写情况':'三段能力')+'</div>';
+    dr.segments.forEach(function(g){
+      if(isD1){
+        h+='<div class="bar-row"><div class="bar-top"><b>'+g.name+'</b><em>'+Math.round(g.ratio*100)+'%</em></div>'+
+          '<div class="bar-track"><div class="bar-fill" style="width:'+Math.round(g.ratio*100)+'%"></div></div></div>';
+      }else{
+        h+='<div class="bar-row"><div class="bar-top"><b>'+g.name+'</b><em>'+g.avg.toFixed(1)+' / 5</em></div>'+
+          '<div class="bar-track"><div class="bar-fill" style="width:'+Math.round(g.avg/5*100)+'%"></div></div>'+
+          '<p class="bar-note">'+groupWord(g.avg)+'</p></div>';
+      }
+    });
+    if(!isD1){
+      h+='<div class="arch-gname">'+dr.scoredQs.length+' 题逐题明细</div>';
+      dr.scoredQs.forEach(function(q){
+        var s=R.scoreMap[q.qid];
+        h+='<div class="item-row"><span class="item-name">'+esc(q.short)+'</span>'+
+          ((s===null||s===undefined)?'<div class="item-track"></div><span class="item-score na">—</span>':
+          '<div class="item-track"><i style="width:'+Math.round(s/5*100)+'%"></i></div><span class="item-score">'+s+'</span>')+'</div>';
+      });
+      h+='<p class="mini-note">反向题已按 6 − 原始分换算；选「不适用」的题不计入均分。本维度最需练习：'+esc(dr.lowest)+'。</p>';
+      h+='<div class="arch-gname">相对占优的地方</div>'+notesHTML(dr.strengths);
+      h+='<div class="arch-gname">'+(dr.rank.length&&dr.rank[dr.rank.length-1].s>=4?'想更进一步':'可以练习的事')+'</div>'+notesHTML(dr.advice,true);
+    }else if(R.archive){
+      var A=R.archive;
+      h+='<div class="arch-gname">六组客观条件速览</div>';
+      A.signals.forEach(function(s){h+='<div class="arch-row"><span>'+esc(s.name)+'</span><span>'+esc(s.state)+' · '+esc(s.note)+'</span></div>'});
+      h+='<div class="arch-gname">相对占优的地方</div>'+notesHTML(A.strengths);
+      h+='<div class="arch-gname">需要提前说清楚的</div>'+notesHTML(A.attentions,true);
+      h+='<div class="arch-gname">门当户对 · 怎么对齐更省力</div><p class="mini-note">'+esc(A.intro)+'</p>';
+      A.must.forEach(function(x,i){h+='<div class="arch-row"><span>必谈 '+(i+1)+'</span><span>'+esc(x)+'</span></div>'});
+      A.flex.forEach(function(x,i){h+='<div class="arch-row"><span>弹性 '+(i+1)+'</span><span>'+esc(x)+'</span></div>'});
+      A.talks.forEach(function(x,i){h+='<div class="arch-row"><span>话题 '+(i+1)+'</span><span>'+esc(x)+'</span></div>'});
+      h+='<p class="mini-note">'+esc(A.pace)+'</p>';
+      h+='<div class="arch-gname">可以拿来对照的四件事</div>'+notesHTML(dr.advice,true);
+    }
+    if(dr.regQs.length){
+      h+='<details class="fold"><summary>查看本维度 '+dr.regQs.length+' 项登记明细</summary><div class="fold-body">';
+      dr.regQs.forEach(function(q){
+        var v=regValue(q),muted=(v==='未填写'||v==='未作答');
+        h+='<div class="arch-row'+(muted?' muted':'')+'"><span>'+esc(q.short)+'</span><span>'+esc(v)+'</span></div>';
+      });
+      h+='</div></details>';
+    }
+    h+='</div>';
+    return h;
+  }
   function allHTML(){
     var T=R.totalScore,h='';
     h+=scoreHTML('154 题合成总分',R.overallIndex,R.level,R.desc);
@@ -629,24 +732,36 @@
     });
     h+='</div>';
 
-    h+='<div class="card rep-card"><h3 class="rep-sec-title">逐维度一句话</h3><p class="rep-sec-sub">按各自得分给出当下最值得留意的方向</p>';
-    R.dimScores.forEach(function(d){
-      if(d.scored===0){
-        h+='<div class="all-dim-row"><div class="all-dim-head"><b>'+d.id+' '+d.name+'</b><em>'+d.index+' / 100</em></div>'+
-          '<div class="bar-track"><div class="bar-fill" style="width:'+d.index+'%"></div></div>'+
-          '<div class="all-dim-note">这一维度由 40 项客观登记组成，分数反映信息明确程度，不代表条件好坏；建议单独打开 D1 查看完整档案解读。</div></div>';
-        return;
-      }
-      h+='<div class="all-dim-row"><div class="all-dim-head"><b>'+d.id+' '+d.name+'</b><em>'+d.index+' / 100</em></div>'+
-        '<div class="bar-track"><div class="bar-fill" style="width:'+d.index+'%"></div></div>'+
-        '<div class="all-dim-note">'+esc(levelDesc(d.name,d.index,'dim'))+'最需练习：'+esc(d.lowest)+'</div></div>';
+    h+='<div class="card rep-card"><h3 class="rep-sec-title">全局速览</h3><p class="rep-sec-sub">跨七个维度，看最顺手和最值得练的具体能力项</p>'+
+      '<div class="stat-grid"><div class="stat-box"><b>'+R.valid.length+'</b><small>有效计分题</small></div>'+
+      '<div class="stat-box"><b>'+T.halfCount+'</b><small>半分题</small></div>'+
+      '<div class="stat-box"><b>'+R.filled.length+'</b><small>已填登记项</small></div></div>'+
+      '<div class="arch-gname">全局最顺手的三项</div>';
+    R.rank.slice(0,3).forEach(function(x,i){
+      h+='<div class="arch-row"><span>'+(i+1)+'. '+esc(x.q.short)+'（'+x.q.dim+'）</span><span>'+x.s+' / 5</span></div>';
+    });
+    h+='<div class="arch-gname">全局最值得练的三项</div>';
+    R.rank.slice(-3).reverse().forEach(function(x,i){
+      h+='<div class="arch-row"><span>'+(i+1)+'. '+esc(x.q.short)+'（'+x.q.dim+'）</span><span>'+x.s+' / 5</span></div>';
     });
     h+='</div>';
 
-    h+='<div class="card rep-card"><h3 class="rep-sec-title">登记信息与半分题</h3><p class="rep-sec-sub">74 项登记题全部纳入总分；选「不便填写」按半数向下取整计入</p>'+
-      '<div class="stat-grid"><div class="stat-box"><b>'+R.filled.length+'</b><small>已明确填写</small></div>'+
-      '<div class="stat-box"><b>'+T.halfCount+'</b><small>半分题</small></div>'+
-      '<div class="stat-box"><b>74</b><small>登记项</small></div></div></div>';
+    h+='<div class="report-divider"><span>七份维度详报</span><small>每一维度都按单维度测评的完整结构展开</small></div>';
+    R.dimReports.forEach(function(dr){h+=dimBlockHTML(dr)});
+
+    h+='<div class="card rep-card"><h3 class="rep-sec-title">全部登记明细</h3><p class="rep-sec-sub">74 项客观与偏好登记，按维度分组；未填写项以浅色标出</p>'+
+      '<details class="fold"><summary>展开查看 74 项登记明细</summary><div class="fold-body">';
+    DATA.dims.forEach(function(d){
+      var qs=QS.filter(function(q){return q.dim===d.id&&!q.scored});
+      if(!qs.length)return;
+      h+='<div class="arch-group"><div class="arch-gname">'+d.id+' '+d.name+' · '+qs.length+' 项</div>';
+      qs.forEach(function(q){
+        var v=regValue(q),muted=(v==='未填写'||v==='未作答');
+        h+='<div class="arch-row'+(muted?' muted':'')+'"><span>'+esc(q.short)+'</span><span>'+esc(v)+'</span></div>';
+      });
+      h+='</div>';
+    });
+    h+='</div></details></div>';
 
     h+='<div class="card rep-card"><h3 class="rep-sec-title">最值得先做的三件事</h3><p class="rep-sec-sub">取自得分最低的两个维度</p>'+notesHTML(R.advice,true)+'</div>';
     h+=disclaimerHTML('总分由 154 题加权合成，用于自我复盘，<b>不代表你在相亲市场的整体价值</b>；登记题不按答案内容评高低，客观条件请结合 D1 档案报告一起看。');
@@ -782,6 +897,22 @@
     });
     y+=lh+30;
 
+    /* 综合报告：七维度能力摘要（长图精简版） */
+    if(R.type==='all'){
+      var sumLines=[];
+      R.dimReports.forEach(function(dr){
+        if(dr.scored>0)sumLines.push(dr.id+' '+dr.name+' · '+dr.segments.map(function(g){return g.name+' '+g.avg.toFixed(1)}).join(' / '));
+      });
+      sumLines.push('全局占优：'+R.rank.slice(0,3).map(function(x){return x.q.short+' '+x.s}).join('、'));
+      sumLines.push('待提升：'+R.rank.slice(-3).reverse().map(function(x){return x.q.short+' '+x.s}).join('、'));
+      var sh=64+sumLines.length*40+40;card(ctx,X,y,CW,sh);
+      var sy=y+50;
+      sy=line(ctx,'七维度能力摘要',X+36,sy,27,'#3d2f36',700)+16;
+      sy=line(ctx,'各维度三段能力与全局高低项；完整逐题明细见页面报告',X+36,sy,19,'#a18b95',400)+28;
+      sumLines.forEach(function(t){line(ctx,cut(ctx,t,CW-72,19),X+36,sy,19,'#6f5b64',400);sy+=40});
+      y+=sh+30;
+    }
+
     /* D1 客观条件解读（长图精简版） */
     if(R.type==='archive'){
       var aRows=[];
@@ -864,5 +995,35 @@
   $('againBtn').addEventListener('click',function(){ans={};idx=0;R=null;locked=false;show('s-quiz');renderQuestion()});
   $('homeBtn').addEventListener('click',function(){show('s-home');$('nick').value=nickname});
 
-  renderHome();
+  /* ---------- 示例报告：模拟填完 154 题 ---------- */
+  function runDemo(){
+    if(typeof location==='undefined'||!/(?:\?|&)demo=1(?:&|$)/.test(location.search))return false;
+    nickname='小满';mode='ALL';selected='ALL';QS=DATA.questions.slice();ans={};idx=0;R=null;
+    var pattern=[5,4,5,3,4,5,2,4,5,3,4,2];
+    QS.forEach(function(q,i){
+      if(q.scored){
+        var v=pattern[i%pattern.length];
+        if(q.reverse)v=(i%3===0)?2:4;
+        if(q.options.some(function(o){return o.v==='N'}))v=(i%4===0)?'N':v;
+        ans[q.qid]=v;
+      }else if(i%9===0)ans[q.qid]='不便填写';
+      else{
+        var opts=q.options.filter(function(o){return o.v!=='不便填写'});
+        ans[q.qid]=opts[Math.floor(opts.length/2)].v;
+      }
+    });
+    var fix={
+      F1:'26-29岁',F4b:'体制内',F4c:'5-10年',F4d:'否',F4e:'低',F4f:'几乎无',
+      F5a:'10000-20000',F5b:'20-50万',F5c:'有房',F5d:'无负债',F5e:'否',
+      F6a:'一线城市',F6b:'新一线/省会',F6c:'5-10年',
+      F7a:'均60岁以下且健康',F7b:'是',F7c:'中',F7d:'有自住房及储蓄',F7e:'独生女',F7f:'共同商量',
+      F8a:'未婚',F8b:'无',F8d:'1-2年',
+      F9a:'否',F9b:'无',F9c:'无',F9d:'是',F9e:'无明显家族病史',
+      F10a:'汉族',F10b:'无',F10c:'无',F10d:'无特别要求',F11:'无'
+    };
+    Object.keys(fix).forEach(function(k){ans[k]=fix[k]});
+    isDemo=true;R=compute();renderReport();
+    return true;
+  }
+  if(!runDemo())renderHome();
 })();
