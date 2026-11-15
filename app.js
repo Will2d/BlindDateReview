@@ -2,6 +2,7 @@
   'use strict';
   var $=function(id){return document.getElementById(id)};
   var DATA=window.QUIZ_DATA;
+  var TOTAL_Q=DATA.questions.length,REG_Q=DATA.questions.filter(function(q){return !q.scored}).length,SCORED_Q=TOTAL_Q-REG_Q;
 
   /* ---------- 各维度计分题短标签（顺序与数据文件一致） ---------- */
   var SHORTS={
@@ -134,7 +135,7 @@
   var ARCHIVE_GROUPS=[
     {name:'年龄与外形',prefixes:['F1','F2']},{name:'学历与工作',prefixes:['F3','F4']},
     {name:'财务与城市',prefixes:['F5','F6']},{name:'家庭与婚育',prefixes:['F7','F8']},
-    {name:'健康与兼容约束',prefixes:['F9','F10']},{name:'民俗偏好',prefixes:['F11']}
+    {name:'健康与兼容约束',prefixes:['F9','F10']}
   ];
   function prefixOf(qid){var m=/^([A-Z]+\d+)/.exec(qid);return m?m[1]:qid}
   function archiveGroupOf(q){var p=prefixOf(q.qid);for(var i=0;i<ARCHIVE_GROUPS.length;i++){if(ARCHIVE_GROUPS[i].prefixes.indexOf(p)>=0)return ARCHIVE_GROUPS[i].name}return '其他'}
@@ -158,7 +159,7 @@
 
   /* ---------- 首页 ---------- */
   function renderHome(){
-    var cards=[{id:'ALL',name:'全部题目',total:154,scored:80,desc:'一次做完七个维度，生成一份综合报告，看见整体轮廓。',badge:'完整版 · 推荐'}];
+    var cards=[{id:'ALL',name:'全部题目',total:TOTAL_Q,scored:SCORED_Q,desc:'一次做完七个维度，生成一份综合报告，看见整体轮廓。',badge:'完整版 · 推荐'}];
     cards=cards.concat(DATA.dims.map(function(d){
       return {id:d.id,name:d.name,total:d.total,scored:d.scored,desc:META[d.id].desc,badge:META[d.id].badge};
     }));
@@ -280,14 +281,14 @@
     var inSet=function(id,arr){return arr.indexOf(g(id))>=0};
     var S=[],T=[],must=[],add=function(arr,h,p){arr.push({h:h,p:p})};
 
-    var steady=(inSet('F4b',['体制内','国企'])||inSet('F4f',['几乎无']))&&!inSet('F4e',['高'])&&!inSet('F4d',['是']);
-    var busy=inSet('F4e',['高'])||inSet('F4f',['经常'])||inSet('F4d',['是']);
+    var steady=(inSet('F4b',['体制内','国企'])||inSet('F4f',['几乎无']))&&!inSet('F4e',['高']);
+    var busy=inSet('F4e',['高'])||inSet('F4f',['经常']);
     if(steady)add(S,'工作节奏稳定','单位性质、加班与出差都比较规律，固定相处和约见面的时间更容易安排。');
-    if(busy)add(T,'时间需要提前协调','轮班、加班或高频出差会占用固定时段，建议在关系早期就把"什么时候方便见"说清楚。');
+    if(busy)add(T,'时间需要提前协调','加班或高频出差会占用固定时段，建议在关系早期就把"什么时候方便见"说清楚。');
     if(inSet('F4c',['5-10年','10年以上']))add(S,'职业阶段可预期','在同一条路径上积累较久，生活节奏一般不太会突然大幅变动。');
 
-    if(g('F5d')==='无负债'&&g('F5e')==='否')add(S,'财务负担轻','没有需要固定偿还的负债、征信无异常，婚后财务怎么安排有更大的商量空间。');
-    if(inSet('F5d',['月还款占收入30%以上','有房贷/车贷'])||g('F5e')==='是')add(T,'财务情况适合主动说明','负债与征信这类信息，在谈婚论嫁前由自己先讲清楚，比被问到时再解释更从容。');
+    if(g('F5d')==='无负债')add(S,'财务负担轻','没有需要固定偿还的负债，婚后财务怎么安排有更大的商量空间。');
+    if(inSet('F5d',['月还款占收入30%以上','有房贷/车贷']))add(T,'财务情况适合主动说明','负债这类信息，在谈婚论嫁前由自己先讲清楚，比被问到时再解释更从容。');
     if(inSet('F5c',['有房','两者都有']))add(S,'居住资产已独立','名下已有房或车，居住安排上受外部条件牵制较少。');
     if(inSet('F5a',['10000-20000','20000以上']))add(S,'收入可覆盖自身开销','日常开销不依赖他人，进入关系时更容易保持自己的节奏。');
 
@@ -297,9 +298,9 @@
       add(T,'长期定居地需要对齐','户籍与常住分属不同层级城市，建议把长期定居地放到关系早期议题里。');
     if(g('F6c')==='1年以内')add(T,'仍在新城市适应期','刚到一座城市不久，生活节奏还在建立，给关系留一点弹性会更轻松。');
 
-    if(g('F7b')==='是'&&inSet('F7c',['无','轻'])&&/健康/.test(g('F7a')))
+    if(inSet('F7b',['父母有养老金，我基本无需承担','父母有养老金，我需轻度支持'])&&/健康/.test(g('F7a')))
       add(S,'家庭支持较完整','父母保障较完整、需要你投入的照护较轻，长期安排里可自己支配的时间更多。');
-    if(inSet('F7c',['中','重']))add(T,'照护时间需要预留','家里有比较实际的照护需求，提前把每周能投入的时间说清楚，比后期临时调整更稳。');
+    if(inSet('F7b',['父母无养老金但可自理','父母需我较多经济或照护支持']))add(T,'照护时间需要预留','家里有比较实际的照护需求，提前把每周能投入的时间说清楚，比后期临时调整更稳。');
     if(g('F7f')==='父母')add(T,'家庭决策先对齐边界','家里重大决定多由父母定，建议在推进关系前先和家里把"谁做主"聊清楚。');
     if(g('F7e')==='独生女')add(T,'赡养与节日分配要早聊','家庭结构比较集中，未来赡养安排和节日怎么分，适合提前有个共识。');
 
@@ -309,12 +310,11 @@
     if(g('F9d')==='是')add(S,'有定期体检习惯','对自己的健康状态有持续了解，长期生活里更容易做具体安排。');
 
     /* 敏感项只提示沟通节奏，不作为优劣判断 */
-    var health=(g('F9a')==='是'||(has('F9b')&&g('F9b')!=='无')||(has('F9c')&&g('F9c')!=='无')||
+    var health=(g('F9a')==='是'||(has('F9c')&&g('F9c')!=='无')||
       (has('F9e')&&g('F9e')!=='无明显家族病史'&&g('F9e')!=='不清楚'));
     if(health)add(T,'健康信息按信任节奏分享','需要长期管理或需告知的健康情况，适合在信任建立后主动说明；不必第一次见面就交代，也不建议一直不提。');
     if((has('F10b')&&g('F10b')!=='无')||(has('F10c')&&g('F10c')!=='无')||(has('F10d')&&g('F10d')!=='无特别要求'))
       add(T,'生活习惯兼容项','饮食、信仰或节庆方面有明确要求，提前说清楚比后期磨合更省力。');
-    if(g('F11')==='明确有')add(T,'家人有民俗讲究','家里对属相、星座等有明确讲究时，早点让对方知道，能避免临门一脚的来回拉扯。');
 
     if(!S.length)add(S,'把条件写得更具体','目前没有明显落在"占优"规则里的条件；可以挑一两项自己最有把握的客观条件，在资料里写得更清楚一些。');
     if(!T.length)add(T,'继续保持信息透明','目前没有需要特别提前说明的客观约束；关系推进时按熟悉程度逐步分享就好。');
@@ -328,18 +328,18 @@
           :'按自己的节奏推进就好，时间表只是参考，不需要和别人比较。'));
 
     if(has('F6a')&&has('F6b')&&g('F6a')!==g('F6b'))must.push('未来两三年在哪个城市长期生活');
-    if(inSet('F7c',['中','重']))must.push('赡养投入与照护时间怎么分');
+    if(inSet('F7b',['父母需我较多经济或照护支持']))must.push('赡养投入与照护时间怎么分');
     if(busy)must.push('一周能稳定留出哪些相处时段');
-    if(inSet('F5d',['月还款占收入30%以上','有房贷/车贷'])||g('F5e')==='是')must.push('负债与婚后财务安排');
+    if(inSet('F5d',['月还款占收入30%以上','有房贷/车贷']))must.push('负债与婚后财务安排');
     if(g('F8b')==='有')must.push('现有子女的时间与抚养安排');
     if((has('F10b')&&g('F10b')!=='无')||(has('F10c')&&g('F10c')!=='无'))must.push('饮食、信仰与节庆的具体要求');
     if(g('F7f')==='父母')must.push('父母介入到什么程度、由谁做最终决定');
     var defaults=['生育与育儿分工','婚前财产与共同账户怎么安排','与双方父母的边界和节日分配'];
     for(var di=0;di<defaults.length&&must.length<3;di++)if(must.indexOf(defaults[di])<0)must.push(defaults[di]);
 
-    var ecoState=!has('F5d')?'资料待补充':((g('F5d')==='无负债'&&g('F5e')==='否')?'负担较轻':'需要对齐');
+    var ecoState=!has('F5d')?'资料待补充':(g('F5d')==='无负债'?'负担较轻':'需要对齐');
     var cityState=!has('F6a')||!has('F6b')?'资料待补充':(g('F6a')!==g('F6b')?'需要对齐':'基本一致');
-    var famState=!has('F7c')?'资料待补充':(inSet('F7c',['中','重'])?'需预留时间':'支持较完整');
+    var famState=!has('F7b')?'资料待补充':(inSet('F7b',['父母需我较多经济或照护支持'])?'需预留时间':'支持较完整');
     var signals=[
       {name:'工作与作息',state:busy?'需要协调':(steady?'稳定清晰':'资料待补充'),note:busy?'固定相处时段需提前约':'约见与相处容易安排'},
       {name:'经济与居住',state:ecoState,note:'婚后财务安排建议早期聊清'},
@@ -358,7 +358,7 @@
     };
   }
 
-  /* ---------- 154 题合成总分（仅「全部题目」模式） ---------- */
+  /* ---------- 全题合成总分（仅「全部题目」模式） ---------- */
   var SCORE_CONFIG={
     base:5,              // 单题满分基数
     scaleWeight:2,       // 自评量表题权重
@@ -442,7 +442,7 @@
       r.dimReports=buildDimReports(r);
       var d1reg=QS.filter(function(q){return q.dim==='D1'});
       var d1filled=d1reg.filter(function(q){return ans[q.qid]!==undefined&&ans[q.qid]!=='不便填写'});
-      r.archive=archiveAnalysis({filled:d1filled,regQs:d1reg},40);
+      r.archive=archiveAnalysis({filled:d1filled,regQs:d1reg},d1reg.length);
     }
     if(r.type==='archive')r.analysis=archiveAnalysis(r);
     r.advice=adviceFor(r);
@@ -662,7 +662,7 @@
       '<div class="dim-block-id">'+dr.id+'</div><div class="dim-block-main"><h3>'+dr.name+'</h3>'+
       '<p class="rep-sec-sub">'+dr.total+' 题 · 实得 '+dr.gotScore+' / '+dr.maxScore+' · 得分 '+dr.index+' / 100 · '+dr.level+'</p></div></div>'+
       '<p class="dim-block-desc">'+esc(dr.desc)+'</p>';
-    h+='<div class="arch-gname">'+(isD1?'六组信息填写情况':'三段能力')+'</div>';
+    h+='<div class="arch-gname">'+(isD1?'五组信息填写情况':'三段能力')+'</div>';
     dr.segments.forEach(function(g){
       if(isD1){
         h+='<div class="bar-row"><div class="bar-top"><b>'+g.name+'</b><em>'+Math.round(g.ratio*100)+'%</em></div>'+
@@ -710,14 +710,14 @@
   }
   function allHTML(){
     var T=R.totalScore,h='';
-    h+=scoreHTML('154 题合成总分',R.overallIndex,R.level,R.desc);
+    h+=scoreHTML(TOTAL_Q+' 题合成总分',R.overallIndex,R.level,R.desc);
 
     h+='<div class="card rep-card"><h3 class="rep-sec-title">这个总分怎么来的</h3>'+
-      '<p class="rep-sec-sub">154 道题按单题分值加权汇总后归一化到 100 分；含隐私项</p>'+
+      '<p class="rep-sec-sub">'+TOTAL_Q+' 道题按单题分值加权汇总后归一化到 100 分；含隐私项</p>'+
       '<div class="stat-grid">'+
       '<div class="stat-box"><b>'+T.gotSum+'</b><small>实得 / '+T.maxSum+' 分</small></div>'+
       '<div class="stat-box"><b>'+T.privacyCount+'</b><small>隐私项</small></div>'+
-      '<div class="stat-box"><b>154</b><small>参与题数</small></div></div>'+
+      '<div class="stat-box"><b>'+TOTAL_Q+'</b><small>参与题数</small></div></div>'+
       '<div class="arch-gname">计分规则</div>'+
       '<div class="arch-row"><span>自评量表题 80 道</span><span>1–5 分 × 权重 2；反向题按 6 − 原始分</span></div>'+
       '<div class="arch-row"><span>D5 自评题 6 道</span><span>权重提升至 3</span></div>'+
@@ -750,8 +750,8 @@
     h+='<div class="report-divider"><span>七份维度详报</span><small>每一维度都按单维度测评的完整结构展开</small></div>';
     R.dimReports.forEach(function(dr){h+=dimBlockHTML(dr)});
 
-    h+='<div class="card rep-card"><h3 class="rep-sec-title">全部登记明细</h3><p class="rep-sec-sub">74 项客观与偏好登记，按维度分组；未填写项以浅色标出</p>'+
-      '<details class="fold"><summary>展开查看 74 项登记明细</summary><div class="fold-body">';
+    h+='<div class="card rep-card"><h3 class="rep-sec-title">全部登记明细</h3><p class="rep-sec-sub">'+REG_Q+' 项客观与偏好登记，按维度分组；未填写项以浅色标出</p>'+
+      '<details class="fold"><summary>展开查看 '+REG_Q+' 项登记明细</summary><div class="fold-body">';
     DATA.dims.forEach(function(d){
       var qs=QS.filter(function(q){return q.dim===d.id&&!q.scored});
       if(!qs.length)return;
@@ -765,7 +765,7 @@
     h+='</div></details></div>';
 
     h+='<div class="card rep-card"><h3 class="rep-sec-title">最值得先做的三件事</h3><p class="rep-sec-sub">取自得分最低的两个维度</p>'+notesHTML(R.advice,true)+'</div>';
-    h+=disclaimerHTML('总分由 154 题加权合成，用于自我复盘，<b>不代表你在相亲市场的整体价值</b>；登记题不按答案内容评高低，客观条件请结合 D1 档案报告一起看。');
+    h+=disclaimerHTML('总分由 '+TOTAL_Q+' 题加权合成，用于自我复盘，<b>不代表你在相亲市场的整体价值</b>；登记题不按答案内容评高低，客观条件请结合 D1 档案报告一起看。');
     return h;
   }
 
@@ -832,7 +832,7 @@
       iy=wrap(ctx,'这一维度只做客观情况登记，不打分、不排名，用来看清自己的现实约束与分享节奏。',X+36,iy,CW-72,23,36,'#6f5b64',400);
     }else{
       var mainIndex=R.type==='all'?R.overallIndex:R.index;
-      iy=line(ctx,R.type==='all'?'154 题合成总分':name+' · 自评指数',X+36,iy,22,'#a18b95',600)+76;
+      iy=line(ctx,R.type==='all'?(TOTAL_Q+' 题合成总分'):name+' · 自评指数',X+36,iy,22,'#a18b95',600)+76;
       var ig=ctx.createLinearGradient(X+36,iy-60,X+230,iy-60);ig.addColorStop(0,'#e9759c');ig.addColorStop(1,'#c3a2e3');
       font(ctx,100,700);ctx.fillStyle=ig;ctx.fillText(String(mainIndex),X+36,iy);
       var nw=ctx.measureText(String(mainIndex)).width;
@@ -858,8 +858,8 @@
     });
     var bh=64+bars.length*98;card(ctx,X,y,CW,bh);
     var gy=y+50;
-    gy=line(ctx,R.type==='archive'?'六组信息':(R.type==='all'?'七个维度得分':'能力分段'),X+36,gy,27,'#3d2f36',700)+16;
-    var barSub=R.type==='archive'?'每组的填写情况':(R.type==='all'?('154 题加权合成 · 总实得 '+R.totalScore.gotSum+' / '+R.totalScore.maxSum):'从整体到细节，看看哪一段最需要留意');
+    gy=line(ctx,R.type==='archive'?'五组信息':(R.type==='all'?'七个维度得分':'能力分段'),X+36,gy,27,'#3d2f36',700)+16;
+    var barSub=R.type==='archive'?'每组的填写情况':(R.type==='all'?(TOTAL_Q+' 题加权合成 · 总实得 '+R.totalScore.gotSum+' / '+R.totalScore.maxSum):'从整体到细节，看看哪一段最需要留意');
     gy=line(ctx,barSub,X+36,gy,20,'#a18b95',400)+32;
     bars.forEach(function(b){
       line(ctx,b.label,X+36,gy,23,'#3d2f36',600);
@@ -991,7 +991,7 @@
     var note=R.type==='archive'
       ?'只覆盖「基本客观条件」一个维度，为客观情况登记与条件解读，不打分、不排名，不评价任何一方的条件，也不代表你在相亲市场的整体价值。报告含个人敏感信息，请自行保管。'
       :(R.type==='all'
-        ?'总分由 154 题加权合成；登记题按信息是否明确计分，不按答案内容评高低。结果用于自我复盘，不代表整体价值。'
+        ?'总分由 '+TOTAL_Q+' 题加权合成；登记题按信息是否明确计分，不按答案内容评高低。结果用于自我复盘，不代表整体价值。'
         :'只覆盖所选的一个维度，反映的是该维度内的自评状态，不代表你在相亲市场的整体价值。');
     wrap(ctx,note+'分数用于看见自己的习惯，不做好坏评判。',X+36,dy,CW-72,20,32,'#8a7680',400);
     y+=dh+34;
@@ -1063,7 +1063,7 @@
   $('againBtn').addEventListener('click',function(){ans={};idx=0;R=null;locked=false;show('s-quiz');renderQuestion()});
   $('homeBtn').addEventListener('click',function(){show('s-home');$('nick').value=nickname});
 
-  /* ---------- 示例报告：模拟填完 154 题 ---------- */
+  /* ---------- 示例报告：模拟填完全部题目 ---------- */
   function runDemo(){
     if(typeof location==='undefined'||!/(?:\?|&)demo=1(?:&|$)/.test(location.search))return false;
     nickname='小满';mode='ALL';selected='ALL';QS=DATA.questions.slice();ans={};idx=0;R=null;
@@ -1081,18 +1081,20 @@
       }
     });
     var fix={
-      F1:'26-29岁',F4b:'体制内',F4c:'5-10年',F4d:'否',F4e:'低',F4f:'几乎无',
-      F5a:'10000-20000',F5b:'20-50万',F5c:'有房',F5d:'无负债',F5e:'否',
+      F1:'26-29岁',F3c:'普通本科院校',F3d:'有',F4b:'体制内',F4c:'5-10年',F4e:'低',F4f:'几乎无',
+      F5a:'10000-20000',F5b:'20-50万',F5c:'有房',F5d:'无负债',
       F6a:'一线城市',F6b:'新一线/省会',F6c:'5-10年',
-      F7a:'均60岁以下且健康',F7b:'是',F7c:'中',F7d:'有自住房及储蓄',F7e:'独生女',F7f:'共同商量',
+      F7a:'均60岁以下且健康',F7b:'父母无养老金但可自理',F7d:'有自住房及储蓄',F7e:'独生女',F7f:'共同商量',
       F8a:'未婚',F8b:'无',F8d:'1-2年',
-      F9a:'否',F9b:'无',F9c:'无',F9d:'是',F9e:'无明显家族病史',
-      F10a:'汉族',F10b:'无',F10c:'无',F10d:'无特别要求',F11:'无'
+      F9a:'否',F9c:'无',F9d:'是',F9e:'无明显家族病史',
+      F10a:'汉族',F10b:'无',F10c:'无',F10d:'无特别要求'
     };
     Object.keys(fix).forEach(function(k){ans[k]=fix[k]});
     isDemo=true;R=compute();renderReport();
     return true;
   }
   $('saveBtn').textContent=saveLabel;
+  $('heroKicker').textContent=DATA.dims.length+' 个维度 · '+TOTAL_Q+' 道题';
+  $('demoLink').textContent='查看 '+TOTAL_Q+' 题示例报告 →';
   if(!runDemo())renderHome();
 })();
