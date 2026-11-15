@@ -939,6 +939,22 @@
     if(buf){ctx.fillText(buf,x,yy);yy+=lh}
     return yy;
   }
+  function wrapCount(ctx,str,maxW,size){
+    font(ctx,size,400);
+    var n=1,buf='';
+    for(var i=0;i<str.length;i++){
+      var test=buf+str.charAt(i);
+      if(ctx.measureText(test).width>maxW&&buf){n++;buf=str.charAt(i)}else buf=test;
+    }
+    return n;
+  }
+  function fitLine(ctx,str,x,y,maxW,size,color,weight,minSize){
+    weight=weight||400;minSize=minSize||15;
+    font(ctx,size,weight);
+    while(ctx.measureText(str).width>maxW&&size>minSize){size--;font(ctx,size,weight)}
+    ctx.fillStyle=color;ctx.fillText(str,x,y);
+    return y;
+  }
   function gradBar(ctx,x,y,w,h,ratio){
     fillRR(ctx,x,y,w,h,h/2,'#f6e9ee');
     var fw=Math.max(h,w*Math.min(1,Math.max(0,ratio)));
@@ -954,13 +970,22 @@
     for(var i=0;i<str.length;i++){if(ctx.measureText(out+str.charAt(i)).width>maxW)break;out+=str.charAt(i)}
     return out===''?'':(out.length<str.length?out.slice(0,-1)+'…':out);
   }
+  function gridHeight(ctx,rows,cols,rowH,size,colW){
+    var lines=0;
+    for(var i=0;i<rows.length;i++)lines=Math.max(lines,wrapCount(ctx,String(rows[i]),colW-12,size));
+    return (Math.ceil(rows.length/cols)||0)*lines*rowH;
+  }
   function paintGrid(ctx,x,y,w,rows,cols,rowH,size,color){
     if(!rows.length)return y;
     var colW=w/cols;
+    var lines=0;
+    for(var i=0;i<rows.length;i++)lines=Math.max(lines,wrapCount(ctx,String(rows[i]),colW-12,size));
+    var blockH=lines*rowH;
     rows.forEach(function(t,i){
-      line(ctx,cut(ctx,String(t),colW-12,size),x+(i%cols)*colW,y+Math.floor(i/cols)*rowH,size,color,400);
+      var cellX=x+(i%cols)*colW,cellY=y+Math.floor(i/cols)*blockH;
+      wrap(ctx,String(t),cellX,cellY,colW-12,size,rowH,color,400);
     });
-    return y+Math.ceil(rows.length/cols)*rowH;
+    return y+Math.ceil(rows.length/cols)*blockH;
   }
   function paint(ctx,W,H){
     var bg=ctx.createLinearGradient(0,0,0,H);
@@ -973,7 +998,7 @@
     var X=48,CW=W-96,y=72;
     var name=R.type==='all'?'全部维度综合':(R.type==='quick'?'速答速览':DATA.dims.filter(function(d){return d.id===mode})[0].name);
     y=line(ctx,'BLOOM LAB  ·  自评报告',X,y,21,'#a18b95',600)+34;
-    y=line(ctx,cut(ctx,name+'报告',CW,42),X,y,42,'#3d2f36',700)+38;
+    y=fitLine(ctx,name+'报告',X,y,CW,42,'#3d2f36',700,26)+38;
     y=line(ctx,nickname+'  ·  '+dateStr()+'  ·  '+QS.length+' 题',X,y,22,'#8a7680',400)+40;
 
     /* 主卡 */
@@ -1048,13 +1073,13 @@
     y+=bh+30;
 
     /* 明细区 */
-    var rows=[],step=R.type==='archive'?34:(R.type==='all'?116:46);
+    var rows=[],step=R.type==='archive'?46:(R.type==='all'?116:46);
     if(R.type==='dim')R.scoredQs.forEach(function(q){
       var s=R.scoreMap[q.qid];rows.push({label:q.short,value:s===null?'—':String(s),ratio:s===null?0:s/5,note:''});
     });
     else if(R.type==='archive')R.regQs.forEach(function(q){
       var v=regValue(q),ok=(v!=='未填写'&&v!=='未作答');
-      rows.push({label:q.short,value:cut(ctx,v,250,20),ratio:ok?1:0,note:''});
+      rows.push({label:q.short,value:v,ratio:ok?1:0,note:''});
     });
     else if(R.type==='quick')R.scoredQs.forEach(function(q){
       var s2=R.scoreMap[q.qid];
@@ -1077,10 +1102,11 @@
         gradBar(ctx,X+36,jy+14,CW-72,10,rw.ratio);
         wrap(ctx,rw.note,X+36,jy+50,CW-72,19,27,'#8a7680',400);
       }else{
-        line(ctx,cut(ctx,rw.label,190,21),X+36,jy,21,'#6f5b64',400);
-        gradBar(ctx,X+250,jy-13,300,10,rw.ratio);
-        font(ctx,21,700);var sw=ctx.measureText(rw.value).width;
-        line(ctx,rw.value,X+CW-36-sw,jy,21,rw.ratio===0?'#b9a3ad':'#e9759c',700);
+        fitLine(ctx,rw.label,X+36,jy,180,21,'#6f5b64',400,15);
+        font(ctx,21,700);
+        var sw=ctx.measureText(rw.value).width;
+        fitLine(ctx,rw.value,X+CW-36-Math.min(sw,340),jy,340,21,rw.ratio===0?'#b9a3ad':'#e9759c',700,16);
+        gradBar(ctx,X+36,jy+14,CW-72,8,rw.ratio);
       }
       jy+=step;
     });
@@ -1094,11 +1120,13 @@
       });
       sumLines.push('全局占优：'+R.rank.slice(0,3).map(function(x){return x.q.short+' '+x.s}).join('、'));
       sumLines.push('待提升：'+R.rank.slice(-3).reverse().map(function(x){return x.q.short+' '+x.s}).join('、'));
-      var sh=64+sumLines.length*40+40;card(ctx,X,y,CW,sh);
+      var sumMax=CW-72,sumSize=19,sumLH=30,sumExtra=0;
+      sumLines.forEach(function(t){sumExtra+=wrapCount(ctx,t,sumMax,sumSize)*sumLH+10});
+      var sh=136+sumExtra;card(ctx,X,y,CW,sh);
       var sy=y+50;
       sy=line(ctx,'七维度能力摘要',X+36,sy,27,'#3d2f36',700)+16;
       sy=line(ctx,'各维度三段能力与全局高低项；完整逐题明细见页面报告',X+36,sy,19,'#a18b95',400)+28;
-      sumLines.forEach(function(t){line(ctx,cut(ctx,t,CW-72,19),X+36,sy,19,'#6f5b64',400);sy+=40});
+      sumLines.forEach(function(t){sy=wrap(ctx,t,X+36,sy,sumMax,sumSize,sumLH,'#6f5b64',400)+10});
       y+=sh+30;
     }
 
@@ -1109,24 +1137,28 @@
       R.analysis.strengths.slice(0,3).forEach(function(s,i){aRows.push('占优 '+(i+1)+' · '+s.h)});
       R.analysis.attentions.slice(0,3).forEach(function(t,i){aRows.push('留意 '+(i+1)+' · '+t.h)});
       R.analysis.must.slice(0,3).forEach(function(m,i){aRows.push('对齐 '+(i+1)+' · '+m)});
-      var qh=64+aRows.length*34+130;card(ctx,X,y,CW,qh);
+      var aMax=CW-72,aSize=20,aLH=30,aExtra=0;
+      aRows.forEach(function(t){aExtra+=wrapCount(ctx,t,aMax,aSize)*aLH+6});
+      var paceLines=wrapCount(ctx,R.analysis.pace,aMax,20),paceH=paceLines*30+12;
+      var qh=126+aExtra+paceH+30;card(ctx,X,y,CW,qh);
       var qy=y+50;
       qy=line(ctx,'客观条件解读',X+36,qy,27,'#3d2f36',700)+16;
       qy=line(ctx,'六组速览 · 占优 · 留意 · 条件对齐',X+36,qy,20,'#a18b95',400)+30;
-      aRows.forEach(function(t){line(ctx,cut(ctx,t,CW-72,20),X+36,qy,20,'#6f5b64',400);qy+=34});
-      wrap(ctx,R.analysis.pace,X+36,qy+12,CW-72,20,30,'#8a7680',400);
+      aRows.forEach(function(t){qy=wrap(ctx,t,X+36,qy,aMax,aSize,aLH,'#6f5b64',400)+6});
+      wrap(ctx,R.analysis.pace,X+36,qy+12,aMax,20,30,'#8a7680',400);
       y+=qh+30;
     }
 
     /* 建议 */
-    var ah=64+R.advice.length*150;card(ctx,X,y,CW,ah);
+    var advH=R.advice.map(function(a){return Math.max(136,90+wrapCount(ctx,a.p,CW-112,21)*32)});
+    var ah=64+advH.reduce(function(s,h){return s+h+14},0);card(ctx,X,y,CW,ah);
     var ay=y+50;
     ay=line(ctx,R.type==='archive'?'可以拿来对照的事':(R.minScore>=4?'想更进一步':'可以练习的事'),X+36,ay,27,'#3d2f36',700)+42;
-    R.advice.forEach(function(a){
-      fillRR(ctx,X+36,ay-30,CW-72,136,20,'#fff8fb');
-      line(ctx,a.h,X+56,ay,23,'#3d2f36',700);
+    R.advice.forEach(function(a,i){
+      fillRR(ctx,X+36,ay-30,CW-72,advH[i],20,'#fff8fb');
+      fitLine(ctx,a.h,X+56,ay,CW-112,23,'#3d2f36',700,18);
       wrap(ctx,a.p,X+56,ay+34,CW-112,21,32,'#6f5b64',400);
-      ay+=150;
+      ay+=advH[i]+14;
     });
     y+=ah+30;
 
@@ -1149,10 +1181,12 @@
           R.archive.attentions.slice(0,2).forEach(function(t){extraRows.push('留意 '+t.h)});
           R.archive.must.slice(0,2).forEach(function(t){extraRows.push('对齐 '+t.h)});
         }
-        var regRows=dr.regQs.map(function(q){return q.short+'：'+cut(ctx,regValue(q),110,18)});
-        var nRows=Math.ceil(segRows.length/3)+Math.ceil(itemRows.length/3)+Math.ceil(tipRows.length/3)+
-                  Math.ceil(extraRows.length/3)+Math.ceil(regRows.length/3);
-        var gh=90+nRows*24;card(ctx,X,y,CW,gh);
+        var regRows=dr.regQs.map(function(q){return q.short+'：'+regValue(q)});
+        var gcolW=(CW-72)/3;
+        var gh=90+gridHeight(ctx,segRows,3,24,18,gcolW)+gridHeight(ctx,itemRows,3,24,18,gcolW)+
+                 gridHeight(ctx,tipRows,3,24,18,gcolW)+gridHeight(ctx,extraRows,3,24,18,gcolW)+
+                 gridHeight(ctx,regRows,3,24,18,gcolW);
+        card(ctx,X,y,CW,gh);
         var gy=y+44;
         gy=line(ctx,dr.id+' '+dr.name+'  ·  '+dr.index+'/100  ·  '+dr.total+' 题',X+36,gy,23,'#3d2f36',700)+26;
         gy=paintGrid(ctx,X+36,gy,CW-72,segRows,3,24,18,'#6f5b64');
@@ -1183,12 +1217,12 @@
   function isWeChat(){return /MicroMessenger/i.test((typeof navigator!=='undefined'&&navigator.userAgent)||'')}
   var saveLabel=isWeChat()?'生成报告图片':'下载报告图片';
   function buildCanvas(small){
-    var W=750;
-    var tmp=document.createElement('canvas');tmp.width=W;tmp.height=7500;
+    var W=750,LIMIT=22000;
+    var tmp=document.createElement('canvas');tmp.width=W;tmp.height=LIMIT;
     var tc=tmp.getContext('2d');
-    var endY=paint(tc,W,7500),H=Math.ceil(endY)+20;
+    var endY=paint(tc,W,LIMIT),H=Math.ceil(endY)+20;
     var cap=small?8000000:14000000,maxS=small?1.5:2;
-    var S=Math.max(1,Math.min(maxS,Math.sqrt(cap/(W*H)),7000/H));
+    var S=Math.max(1,Math.min(maxS,Math.sqrt(cap/(W*H)),9000/H));
     var c=document.createElement('canvas');c.width=Math.round(W*S);c.height=Math.round(H*S);
     var ctx=c.getContext('2d');ctx.scale(S,S);
     paint(ctx,W,H);
@@ -1243,7 +1277,7 @@
   $('closeModal').addEventListener('click',closeModal);
   $('modalMask').addEventListener('click',closeModal);
   $('againBtn').addEventListener('click',function(){ans={};idx=0;R=null;locked=false;clearProgress();show('s-quiz');renderQuestion()});
-  $('homeBtn').addEventListener('click',function(){renderResume();show('s-home');$('nick').value=nickname});
+  $('homeBtn').addEventListener('click',function(){renderHome();show('s-home');$('nick').value=nickname});
 
   /* ---------- 示例报告：模拟填完全部题目 ---------- */
   function runDemo(){
@@ -1278,5 +1312,6 @@
   $('saveBtn').textContent=saveLabel;
   $('heroKicker').textContent=DATA.dims.length+' 个维度 · '+TOTAL_Q+' 道题';
   $('demoLink').textContent='查看 '+TOTAL_Q+' 题示例报告 →';
-  if(!runDemo())renderHome();
+  renderHome();
+  runDemo();
 })();
