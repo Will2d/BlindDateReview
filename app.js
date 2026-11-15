@@ -140,6 +140,54 @@
   function prefixOf(qid){var m=/^([A-Z]+\d+)/.exec(qid);return m?m[1]:qid}
   function archiveGroupOf(q){var p=prefixOf(q.qid);for(var i=0;i<ARCHIVE_GROUPS.length;i++){if(ARCHIVE_GROUPS[i].prefixes.indexOf(p)>=0)return ARCHIVE_GROUPS[i].name}return '其他'}
 
+  /* ---------- 25 题速答版：从七个维度各挑几题 ---------- */
+  var QUICK_IDS=[
+    'F1','F6b','F7b',
+    'C1','C2','C5','C10',
+    'P1','P7','P12','P18',
+    'M2','M5','M6','M11',
+    'V10','V11','V13',
+    'L1','L5','L8','L11',
+    'R1','R4','R15'
+  ];
+  var QUICK_QS=QUICK_IDS.map(function(id){
+    return DATA.questions.filter(function(q){return q.qid===id})[0];
+  }).filter(function(q){return !!q});
+  function QSFor(m){
+    if(m==='ALL')return DATA.questions.slice();
+    if(m==='QUICK')return QUICK_QS.slice();
+    return DATA.questions.filter(function(q){return q.dim===m});
+  }
+
+  /* ---------- 断点续答 ---------- */
+  var PROGRESS_KEY='bloom_progress_v1';
+  function saveProgress(){
+    try{localStorage.setItem(PROGRESS_KEY,JSON.stringify({mode:mode,nickname:nickname,idx:idx,ans:ans,ts:Date.now()}))}catch(e){}
+  }
+  function clearProgress(){try{localStorage.removeItem(PROGRESS_KEY)}catch(e){}}
+  function readProgress(){
+    try{
+      var p=JSON.parse(localStorage.getItem(PROGRESS_KEY)||'null');
+      if(!p||!p.mode||!p.ans||typeof p.idx!=='number')return null;
+      return p;
+    }catch(e){return null}
+  }
+  function renderResume(){
+    var el=$('resumeBar');if(!el)return;
+    var p=readProgress(),total=p?QSFor(p.mode).length:0;
+    if(!p||!total||p.idx>=total){el.hidden=true;return}
+    el.hidden=false;
+    el.textContent='继续上次 · 第 '+(p.idx+1)+' / '+total+' 题（'+(p.nickname||'未署名')+'）→';
+  }
+  function resumeQuiz(){
+    var p=readProgress();if(!p)return;
+    mode=p.mode;selected=mode;nickname=p.nickname||'';
+    QS=QSFor(mode);ans=p.ans||{};idx=Math.min(p.idx||0,QS.length-1);
+    R=null;locked=false;isDemo=false;
+    try{$('nick').value=nickname}catch(e){}
+    show('s-quiz');renderQuestion();
+  }
+
   /* ---------- 状态 ---------- */
   var nickname='',mode='ALL',QS=[],ans={},idx=0,locked=false,R=null,autoTimer=null,blobUrl=null,selected='ALL',isDemo=false;
 
@@ -159,7 +207,8 @@
 
   /* ---------- 首页 ---------- */
   function renderHome(){
-    var cards=[{id:'ALL',name:'全部题目',total:TOTAL_Q,scored:SCORED_Q,desc:'一次做完七个维度，生成一份综合报告，看见整体轮廓。',badge:'完整版 · 推荐'}];
+    var cards=[{id:'ALL',name:'全部题目',total:TOTAL_Q,scored:SCORED_Q,desc:'一次做完七个维度，生成一份综合报告，看见整体轮廓。',badge:'完整版 · 推荐'},
+      {id:'QUICK',name:'速答版',total:QUICK_QS.length,scored:QUICK_QS.filter(function(q){return q.scored}).length,desc:'从七个维度各挑几题，先花几分钟看见自己的轮廓。想看细一点，再回来做完整版。',badge:'最快 4 分钟 · 推荐先做'}];
     cards=cards.concat(DATA.dims.map(function(d){
       return {id:d.id,name:d.name,total:d.total,scored:d.scored,desc:META[d.id].desc,badge:META[d.id].badge};
     }));
@@ -174,7 +223,7 @@
     for(var i=0;i<cards.length;i++){
       var c=cards[i],on=c.id===selected;
       html+='<div class="dim-card'+(c.id==='ALL'?' all':'')+(on?' on':'')+'" data-id="'+c.id+'">'+
-        '<div class="dim-num">'+(c.id==='ALL'?'ALL':c.id)+'</div>'+
+        '<div class="dim-num">'+(c.id==='ALL'?'ALL':(c.id==='QUICK'?'25':c.id))+'</div>'+
         '<div class="dim-main"><div class="dim-name">'+c.name+'<span class="dim-badge">'+c.badge+'</span></div>'+
         '<p class="dim-meta">'+c.total+' 题 · 约 '+minutes(c.total)+' 分钟 · '+c.scored+' 题计分</p>'+
         '<p class="dim-desc">'+esc(c.desc)+'</p></div>'+
@@ -190,7 +239,9 @@
       });
     })(els[j]);
     updateDock();
+    renderResume();
   }
+  $('resumeBar').addEventListener('click',resumeQuiz);
   try{var saved=localStorage.getItem('bloom_nick');if(saved)$('nick').value=saved}catch(e){}
   $('nick').addEventListener('keydown',function(e){if(e.key==='Enter'){$('nick').blur();startQuiz()}});
   $('nick').addEventListener('input',function(){$('nickHint').textContent='只会出现在报告里，最多 12 个字';$('nickHint').classList.remove('err')});
@@ -205,8 +256,9 @@
       var box=$('nick').parentElement;box.classList.remove('shake');void box.offsetWidth;box.classList.add('shake');$('nick').focus();return;
     }
     nickname=v.slice(0,12);try{localStorage.setItem('bloom_nick',nickname)}catch(e){}
-    mode=selected;ans={};idx=0;R=null;locked=false;
-    QS=mode==='ALL'?DATA.questions.slice():DATA.questions.filter(function(q){return q.dim===mode});
+    mode=selected;ans={};idx=0;R=null;locked=false;isDemo=false;
+    clearProgress();
+    QS=QSFor(mode);
     show('s-quiz');renderQuestion();
   }
 
@@ -218,6 +270,9 @@
     $('groupTag').textContent=q.dimName;
     $('qCount').textContent=pad(idx+1)+' / '+QS.length;
     $('progressFill').style.width=((idx+1)/QS.length*100)+'%';
+    var done=QS.filter(function(x){return ans[x.qid]!==undefined}).length;
+    var left=Math.max(0,QS.length-done);
+    $('qMeta').textContent='已完成 '+done+' / '+QS.length+' 题 · '+(left?('约还需 '+Math.max(1,Math.ceil(left*8/60))+' 分钟'):'马上就好');
     $('qTip').textContent=isScale
       ?('按最近 3–6 个月的真实状态选，凭第一感觉就好'+(q.options.some(function(o){return o.v==='N'})?'；没有相关经历可选「不适用」':''))
       :'如实选一项即可，不想填可以选「不便填写」';
@@ -236,10 +291,11 @@
     })(j);
     $('nextBtn').disabled=(ans[q.qid]===undefined);
     locked=false;
+    saveProgress();
   }
   function choose(v){
     if(locked)return;locked=true;
-    var q=QS[idx];ans[q.qid]=v;
+    var q=QS[idx];ans[q.qid]=v;saveProgress();
     var btns=$('options').querySelectorAll('.opt');
     for(var i=0;i<btns.length;i++)btns[i].classList.toggle('on',q.options[i].v===v);
     $('nextBtn').disabled=false;
@@ -255,12 +311,12 @@
   }
   $('prevBtn').addEventListener('click',function(){clearTimeout(autoTimer);if(idx>0){idx--;renderQuestion()}});
   $('nextBtn').addEventListener('click',goNext);
-  $('exitBtn').addEventListener('click',function(){clearTimeout(autoTimer);show('s-home')});
+  $('exitBtn').addEventListener('click',function(){clearTimeout(autoTimer);saveProgress();renderResume();show('s-home')});
 
   /* ---------- 等待 5 秒 ---------- */
   var WAIT_MSGS=['正在整理你的回答…','正在换算反向计分题…','正在汇总各维度表现…','正在写下适合你的建议…','报告马上就好'];
   function finishQuiz(){
-    clearTimeout(autoTimer);R=compute();show('s-wait');
+    clearTimeout(autoTimer);clearProgress();R=compute();show('s-wait');
     $('countdown').textContent='5';$('waitMsg').textContent=WAIT_MSGS[0];
     var fg=document.querySelector('.ring-fg');
     fg.style.animation='none';void fg.getBoundingClientRect();fg.style.animation='drain 5s linear forwards';
@@ -414,13 +470,24 @@
     var regQs=QS.filter(function(q){return !q.scored});
     var filled=regQs.filter(function(q){return ans[q.qid]!==undefined&&ans[q.qid]!=='不便填写'});
     var r={
-      type:mode==='ALL'?'all':(DATA.dims.filter(function(d){return d.id===mode})[0].scored===0?'archive':'dim'),
+      type:mode==='QUICK'?'quick':(mode==='ALL'?'all':(DATA.dims.filter(function(d){return d.id===mode})[0].scored===0?'archive':'dim')),
       mode:mode,questions:QS,scoredQs:scoredQs,scoreMap:scoreMap,valid:valid,avg:avg,
       index:Math.round(avg/5*100),rank:rank,bottom:bottom,maxScore:maxScore,minScore:minScore,
       regQs:regQs,filled:filled,skipped:regQs.length-filled.length
     };
-    r.level=levelName(r.index);r.desc=levelDesc(r.type==='all'?'全部维度':DATA.dims.filter(function(d){return d.id===mode})[0].name,r.index,r.type);
+    var reportName=r.type==='all'?'全部维度':(r.type==='quick'?'速答速览':DATA.dims.filter(function(d){return d.id===mode})[0].name);
+    r.level=levelName(r.index);r.desc=levelDesc(reportName,r.index,r.type);
     if(r.type==='dim')r.segments=segmentsOf(mode,scoredQs,scoreMap);
+    if(r.type==='quick'){
+      r.dimScores=DATA.dims.map(function(d){
+        var qs=QS.filter(function(q){return q.dim===d.id&&q.scored});
+        var vals=qs.map(function(q){return scoreMap[q.qid]}).filter(function(v){return v!==null&&v!==undefined});
+        var s=0;vals.forEach(function(v){s+=v});
+        var av=vals.length?s/vals.length:0;
+        var low=qs.map(function(q){return {q:q,s:scoreMap[q.qid]}}).filter(function(x){return x.s!==null&&x.s!==undefined}).sort(function(a,b){return a.s-b.s})[0];
+        return {id:d.id,name:d.name,total:qs.length,scored:d.scored,avg:av,index:Math.round(av/5*100),count:vals.length,lowest:low?low.q.short:'—'};
+      });
+    }
     if(r.type==='all'){
       r.dimScores=DATA.dims.map(function(d){
         var qs=QS.filter(function(q){return q.dim===d.id&&q.scored});
@@ -446,6 +513,7 @@
     }
     if(r.type==='archive')r.analysis=archiveAnalysis(r);
     r.advice=adviceFor(r);
+    r.summary=summaryOf(r);
     return r;
   }
   /* ---------- 综合报告：七份维度详报的数据 ---------- */
@@ -519,6 +587,15 @@
   function adviceFor(r){
     if(r.type==='archive')return META.D1.archiveTips.map(function(t,i){return {h:'梳理 '+(i+1),p:t}});
     if(r.minScore>=4)return ADVANCED.slice(0,3);
+    if(r.type==='quick'){
+      var qLow=r.dimScores.filter(function(d){return d.count>0}).sort(function(a,b){return a.avg-b.avg}).slice(0,2),qOut=[];
+      qLow.forEach(function(d){
+        var a=META[d.id].advice;
+        qOut.push({h:d.name+' · 先练这里',p:a[0]});
+      });
+      qOut.push({h:'想看更完整的自己',p:'速答版只覆盖 25 题；回到首页可以选某个维度做完整测评，或一次做完 '+TOTAL_Q+' 题看七份详报。'});
+      return qOut.slice(0,3);
+    }
     if(r.type==='all'){
       var lowDims=r.dimScores.filter(function(d){return d.scored>0}).sort(function(a,b){return a.score-b.score}).slice(0,2),out=[];
       lowDims.forEach(function(d){
@@ -554,12 +631,54 @@
     return String(v);
   }
 
+  /* ---------- 一句话结论 + 关键词 + 说不清信号 ---------- */
+  var DIM_TAG={D1:'条件清晰',D2:'回应有节奏',D3:'情绪稳定',D4:'意愿明确',D5:'议题想得清',D6:'日子能自理',D7:'关系能承接'};
+  function shortTag(s){return String(s).replace(/与.*$/,'').slice(0,6)}
+  function summaryOf(r){
+    var unsure=0,scoredCount=0;
+    QS.forEach(function(q){if(!q.scored)return;scoredCount++;if(ans[q.qid]===3)unsure++});
+    var ratio=scoredCount?unsure/scoredCount:0,high=ratio>=0.3;
+    var unsureObj={count:unsure,ratio:ratio,high:high,
+      text:'这份结果里有 '+unsure+' 道题选了「一般 / 说不清」。它可能说明最近状态比较平稳，也可能有些题目不太贴合你的经历；按最近一次具体经历重答，结果会更贴近真实。'};
+    var line='',tags=[];
+    if(r.type==='archive'){
+      var total=r.regQs.length||1,fill=r.filled.length;
+      line=fill>=total*0.75
+        ?'你把基本客观条件梳理得比较完整，接下来最省力的一步，是挑一两个需要提前对齐的议题，想清楚怎么说。'
+        :'这份档案先把已知的条件集中起来；补上还没填的部分，条件解读会更贴近你的真实情况。';
+      tags=['条件已梳理',(fill>=total*0.75?'信息较完整':'信息待补充'),'按节奏分享'];
+    }else{
+      var items=[];
+      if(r.type==='dim'&&r.segments)items=r.segments.map(function(g){return {name:g.name,v:g.avg}});
+      else if(r.dimScores)items=r.dimScores.filter(function(d){return d.count>0||d.scored>0}).map(function(d){return {name:d.name,v:d.avg,did:d.id}});
+      if(!items.length)items=[{name:'这一面',v:r.avg}];
+      var sorted=items.slice().sort(function(a,b){return b.v-a.v});
+      var hi=sorted[0],lo=sorted[sorted.length-1];
+      var idx=r.type==='all'?r.overallIndex:r.index;
+      var tone=idx>=85?'整体很稳':(idx>=70?'节奏基本顺畅':(idx>=55?'有自己的节奏':'可以慢慢来'));
+      var hiName=hi.did?DIM_TAG[hi.did]:shortTag(hi.name);
+      var loName=lo.did?DIM_TAG[lo.did]:shortTag(lo.name);
+      line='你在「'+hiName+'」这一面最稳，'+tone+'；接下来最省力的一步，是先把「'+loName+'」里的一两件小事想清楚。';
+      tags=[hiName,tone,(r.minScore>=4?'微调即可':'从小处着手')];
+    }
+    return {line:line,tags:tags,unsure:unsureObj};
+  }
+  function summaryHTML(su){
+    var h='<div class="card rep-card summary-card"><h3 class="rep-sec-title">一句话结论</h3>'+
+      '<p class="summary-line">'+esc(su.line)+'</p><div class="tag-row">';
+    su.tags.forEach(function(t){h+='<span class="tag">'+esc(t)+'</span>'});
+    h+='</div>';
+    if(su.unsure&&su.unsure.high)h+='<p class="mini-note unsure">'+esc(su.unsure.text)+'</p>';
+    return h+'</div>';
+  }
+
   /* ---------- 报告 DOM ---------- */
   function renderReport(){
-    var name=mode==='ALL'?'全部维度综合':DATA.dims.filter(function(d){return d.id===mode})[0].name;
+    var name=mode==='ALL'?'全部维度综合':(mode==='QUICK'?'速答速览':DATA.dims.filter(function(d){return d.id===mode})[0].name);
     $('repTitle').textContent=nickname+' · '+name+'报告';
-    $('repDate').textContent=dateStr()+' · '+QS.length+' 题 · '+(R.type==='archive'?'不计分档案':(R.type==='all'?'七维度综合':'单维度自评'))+(isDemo?' · 示例数据':'');
-    var html=R.type==='archive'?archiveHTML():R.type==='all'?allHTML():dimHTML();
+    var kind=R.type==='archive'?'不计分档案':(R.type==='all'?'七维度综合':(R.type==='quick'?'25 题速览':'单维度自评'));
+    $('repDate').textContent=dateStr()+' · '+QS.length+' 题 · '+kind+(isDemo?' · 示例数据':'');
+    var html=R.type==='archive'?archiveHTML():(R.type==='all'?allHTML():(R.type==='quick'?quickHTML():dimHTML()));
     $('reportBody').innerHTML=html;
     show('s-report');
   }
@@ -579,6 +698,7 @@
   function dimHTML(){
     var h='',d=DATA.dims.filter(function(x){return x.id===mode})[0];
     h+=scoreHTML(d.name+' · 自评指数',R.index,R.level,R.desc);
+    h+=summaryHTML(R.summary);
     h+='<div class="card rep-card"><h3 class="rep-sec-title">三段能力</h3><p class="rep-sec-sub">'+esc(META[mode].segNames?META[mode].segNames.join(' · '):'回应与节奏 · 话题与温度 · 边界与推进')+'</p>';
     R.segments.forEach(function(g){
       h+='<div class="bar-row"><div class="bar-top"><b>'+g.name+'</b><em>'+g.avg.toFixed(1)+' / 5</em></div>'+
@@ -610,7 +730,7 @@
     return h;
   }
   function archiveHTML(){
-    var A=R.analysis,h='';
+    var A=R.analysis,h=summaryHTML(R.summary);
     h+='<div class="card rep-card"><h3 class="rep-sec-title">资料完成度</h3><p class="rep-sec-sub">这一维度只登记基本客观条件，不打分、不排名，也不需要"做得更好"</p>'+
       '<div class="stat-grid"><div class="stat-box"><b>'+R.filled.length+'</b><small>已填写</small></div>'+
       '<div class="stat-box"><b>'+R.skipped+'</b><small>未填写</small></div>'+
@@ -708,9 +828,43 @@
     h+='</div>';
     return h;
   }
+  function quickHTML(){
+    var h='';
+    h+=scoreHTML('速答速览 · 自评指数',R.index,R.level,R.desc);
+    h+=summaryHTML(R.summary);
+    h+='<div class="card rep-card"><h3 class="rep-sec-title">七个维度速览</h3><p class="rep-sec-sub">25 题里每个维度 3–4 题，先看见轮廓</p>';
+    R.dimScores.forEach(function(d){
+      h+='<div class="bar-row"><div class="bar-top"><b>'+d.id+' '+d.name+'</b><em>'+(d.count?d.index+' / 100':'仅登记')+'</em></div>'+
+        '<div class="bar-track"><div class="bar-fill" style="width:'+d.index+'%"></div></div>'+
+        '<p class="bar-note">'+(d.count?d.count+' 题计分 · 最需练习：'+esc(d.lowest):'3 项客观登记，不计分')+'</p></div>';
+    });
+    h+='</div>';
+    h+='<div class="card rep-card"><h3 class="rep-sec-title">'+R.valid.length+' 题逐题明细</h3><p class="rep-sec-sub">分数越高，代表这一项越接近顺畅状态</p>';
+    R.scoredQs.forEach(function(q){
+      var ss=R.scoreMap[q.qid];
+      h+='<div class="item-row"><span class="item-name">'+esc(q.short)+'</span>'+
+        (ss===null?'<div class="item-track"></div><span class="item-score na">—</span>':
+          '<div class="item-track"><i style="width:'+Math.round(ss/5*100)+'%"></i></div><span class="item-score">'+ss+'</span>')+'</div>';
+    });
+    h+='<p class="mini-note">维度得分 = 该维度有效题均分 ÷ 5 × 100；速答版不含反向题与「不适用」题。</p>';
+    if(R.regQs.length){
+      h+='<details class="fold"><summary>查看 '+R.regQs.length+' 项登记信息（不计分）</summary><div class="fold-body">';
+      R.regQs.forEach(function(q){
+        var v=regValue(q),muted=(v==='未填写'||v==='未作答');
+        h+='<div class="arch-row'+(muted?' muted':'')+'"><span>'+esc(q.short)+'</span><span>'+esc(v)+'</span></div>';
+      });
+      h+='</div></details>';
+    }
+    h+='</div>';
+    h+='<div class="card rep-card"><h3 class="rep-sec-title">最值得先做的三件事</h3><p class="rep-sec-sub">取自速览里得分最低的维度</p>'+notesHTML(R.advice,true)+'</div>';
+    h+='<div class="card rep-card"><h3 class="rep-sec-title">想看得更细？</h3><p class="mini-note">速答版只覆盖 25 题，用来先看见轮廓。回到首页可以选某个维度做完整测评，或一次做完 '+TOTAL_Q+' 题看七份详报。</p></div>';
+    h+=disclaimerHTML('速答版只覆盖 25 道题，是轮廓速览，不代表完整测评结果，也不代表整体价值。');
+    return h;
+  }
   function allHTML(){
     var T=R.totalScore,h='';
     h+=scoreHTML(TOTAL_Q+' 题合成总分',R.overallIndex,R.level,R.desc);
+    h+=summaryHTML(R.summary);
 
     h+='<div class="card rep-card"><h3 class="rep-sec-title">这个总分怎么来的</h3>'+
       '<p class="rep-sec-sub">'+TOTAL_Q+' 道题按单题分值加权汇总后归一化到 100 分；含隐私项</p>'+
@@ -817,7 +971,7 @@
     halo.addColorStop(0,'rgba(255,183,205,.55)');halo.addColorStop(1,'rgba(255,183,205,0)');
     ctx.fillStyle=halo;ctx.fillRect(0,0,420,340);ctx.restore();
     var X=48,CW=W-96,y=72;
-    var name=R.type==='all'?'全部维度综合':DATA.dims.filter(function(d){return d.id===mode})[0].name;
+    var name=R.type==='all'?'全部维度综合':(R.type==='quick'?'速答速览':DATA.dims.filter(function(d){return d.id===mode})[0].name);
     y=line(ctx,'BLOOM LAB  ·  自评报告',X,y,21,'#a18b95',600)+34;
     y=line(ctx,cut(ctx,name+'报告',CW,42),X,y,42,'#3d2f36',700)+38;
     y=line(ctx,nickname+'  ·  '+dateStr()+'  ·  '+QS.length+' 题',X,y,22,'#8a7680',400)+40;
@@ -832,7 +986,7 @@
       iy=wrap(ctx,'这一维度只做客观情况登记，不打分、不排名，用来看清自己的现实约束与分享节奏。',X+36,iy,CW-72,23,36,'#6f5b64',400);
     }else{
       var mainIndex=R.type==='all'?R.overallIndex:R.index;
-      iy=line(ctx,R.type==='all'?(TOTAL_Q+' 题合成总分'):name+' · 自评指数',X+36,iy,22,'#a18b95',600)+76;
+      iy=line(ctx,R.type==='all'?(TOTAL_Q+' 题合成总分'):(R.type==='quick'?'速答速览 · 自评指数':name+' · 自评指数'),X+36,iy,22,'#a18b95',600)+76;
       var ig=ctx.createLinearGradient(X+36,iy-60,X+230,iy-60);ig.addColorStop(0,'#e9759c');ig.addColorStop(1,'#c3a2e3');
       font(ctx,100,700);ctx.fillStyle=ig;ctx.fillText(String(mainIndex),X+36,iy);
       var nw=ctx.measureText(String(mainIndex)).width;
@@ -844,12 +998,34 @@
     }
     y+=ch+30;
 
+    /* 一句话结论 + 3 个关键词（与页面报告一致） */
+    var SM=R.summary,sch=SM.unsure&&SM.unsure.high?300:230;
+    card(ctx,X,y,CW,sch);
+    var smy=y+50;
+    smy=line(ctx,'一句话结论',X+36,smy,27,'#3d2f36',700)+18;
+    smy=wrap(ctx,SM.line,X+36,smy+12,CW-72,22,34,'#6f5b64',500)+16;
+    var tagX=X+36,tagY=smy;
+    SM.tags.forEach(function(t){
+      font(ctx,20,700);var tw=ctx.measureText(t).width+32;
+      if(tagX+tw>X+CW-36){tagX=X+36;tagY+=44}
+      fillRR(ctx,tagX,tagY-24,tw,38,19,'#fff0f5');
+      line(ctx,t,tagX+16,tagY+2,20,'#e9759c',700);
+      tagX+=tw+12;
+    });
+    tagY+=44;
+    if(SM.unsure&&SM.unsure.high)wrap(ctx,SM.unsure.text,X+36,tagY,CW-72,18,28,'#a18b95',400);
+    y+=sch+30;
+
     /* 条形区 */
     var bars=[];
     if(R.type==='dim')R.segments.forEach(function(g){bars.push({label:g.name,value:g.avg.toFixed(1)+' / 5',ratio:g.avg/5,note:groupWord(g.avg)})});
     else if(R.type==='all')R.dimScores.forEach(function(d){
       bars.push({label:d.id+' '+d.name,value:d.index+' / 100',ratio:d.index/100,
         note:'实得 '+d.gotScore+' / '+d.maxScore+(d.privacyCount?' · '+d.privacyCount+' 项为隐私项':'')+(d.scored>0?' · 最需练习：'+d.lowest:' · 信息明确度')});
+    });
+    else if(R.type==='quick')R.dimScores.forEach(function(d){
+      bars.push({label:d.id+' '+d.name,value:d.count?d.index+' / 100':'仅登记',ratio:d.count?d.index/100:0,
+        note:d.count?(d.count+' 题计分 · 最需练习：'+d.lowest):'3 项客观登记，不计分'});
     });
     else ARCHIVE_GROUPS.forEach(function(g){
       var qs=R.regQs.filter(function(q){return archiveGroupOf(q)===g.name});
@@ -858,8 +1034,8 @@
     });
     var bh=64+bars.length*98;card(ctx,X,y,CW,bh);
     var gy=y+50;
-    gy=line(ctx,R.type==='archive'?'五组信息':(R.type==='all'?'七个维度得分':'能力分段'),X+36,gy,27,'#3d2f36',700)+16;
-    var barSub=R.type==='archive'?'每组的填写情况':(R.type==='all'?(TOTAL_Q+' 题加权合成 · 总实得 '+R.totalScore.gotSum+' / '+R.totalScore.maxSum):'从整体到细节，看看哪一段最需要留意');
+    gy=line(ctx,R.type==='archive'?'五组信息':(R.type==='all'?'七个维度得分':(R.type==='quick'?'七维度速览':'能力分段')),X+36,gy,27,'#3d2f36',700)+16;
+    var barSub=R.type==='archive'?'每组的填写情况':(R.type==='all'?(TOTAL_Q+' 题加权合成 · 总实得 '+R.totalScore.gotSum+' / '+R.totalScore.maxSum):(R.type==='quick'?'25 题先看轮廓，细项请做完整版':'从整体到细节，看看哪一段最需要留意'));
     gy=line(ctx,barSub,X+36,gy,20,'#a18b95',400)+32;
     bars.forEach(function(b){
       line(ctx,b.label,X+36,gy,23,'#3d2f36',600);
@@ -880,14 +1056,18 @@
       var v=regValue(q),ok=(v!=='未填写'&&v!=='未作答');
       rows.push({label:q.short,value:cut(ctx,v,250,20),ratio:ok?1:0,note:''});
     });
+    else if(R.type==='quick')R.scoredQs.forEach(function(q){
+      var s2=R.scoreMap[q.qid];
+      rows.push({label:q.short,value:s2===null?'—':String(s2),ratio:s2===null?0:s2/5,note:''});
+    });
     else R.dimScores.forEach(function(d){
       rows.push({label:d.id+' '+d.name,value:d.index+' / 100',ratio:d.index/100,
         note:d.scored>0?levelDesc(d.name,d.index,'dim'):'客观登记项，分数反映信息明确程度，不评条件好坏'});
     });
     var lh=64+rows.length*step+40;card(ctx,X,y,CW,lh);
     var jy=y+50;
-    jy=line(ctx,R.type==='archive'?'登记明细':'维度明细',X+36,jy,27,'#3d2f36',700)+16;
-    var listSub=R.type==='archive'?'未填写项以浅色标出':(R.type==='all'?'同一套单题规则在维度内汇总，换算为 100 分制':('分数越高，代表这一项越接近顺畅状态'+(R.regQs.length?' · 另有 '+R.regQs.length+' 项登记信息见页面报告':'')));
+    jy=line(ctx,R.type==='archive'?'登记明细':(R.type==='all'?'维度明细':(R.type==='quick'?'逐题明细':'能力明细')),X+36,jy,27,'#3d2f36',700)+16;
+    var listSub=R.type==='archive'?'未填写项以浅色标出':(R.type==='all'?'同一套单题规则在维度内汇总，换算为 100 分制':(R.type==='quick'?'25 题里的 22 道计分题，分数越高越接近顺畅状态':('分数越高，代表这一项越接近顺畅状态'+(R.regQs.length?' · 另有 '+R.regQs.length+' 项登记信息见页面报告':''))));
     jy=line(ctx,listSub,X+36,jy,20,'#a18b95',400)+30;
     rows.forEach(function(rw){
       if(R.type==='all'){
@@ -992,7 +1172,9 @@
       ?'只覆盖「基本客观条件」一个维度，为客观情况登记与条件解读，不打分、不排名，不评价任何一方的条件，也不代表你在相亲市场的整体价值。报告含个人敏感信息，请自行保管。'
       :(R.type==='all'
         ?'总分由 '+TOTAL_Q+' 题加权合成；登记题按信息是否明确计分，不按答案内容评高低。结果用于自我复盘，不代表整体价值。'
-        :'只覆盖所选的一个维度，反映的是该维度内的自评状态，不代表你在相亲市场的整体价值。');
+        :(R.type==='quick'
+          ?'速答版只覆盖 25 题，是轮廓速览；想看逐维度详报，请回到首页做完整测评。结果不代表整体价值。'
+          :'只覆盖所选的一个维度，反映的是该维度内的自评状态，不代表你在相亲市场的整体价值。'));
     wrap(ctx,note+'分数用于看见自己的习惯，不做好坏评判。',X+36,dy,CW-72,20,32,'#8a7680',400);
     y+=dh+34;
     line(ctx,'BLOOM LAB  ·  给自己的一次温柔观察',X,y,19,'#b9a3ad',400);
@@ -1015,7 +1197,7 @@
   function triggerDownload(){
     if(isWeChat()||!blobUrl)return;
     var a=document.createElement('a');a.href=blobUrl;
-    a.download='自我观察报告_'+(mode==='ALL'?'全部维度':mode)+'_'+nickname+'_'+dateFile()+'.png';
+    a.download='自我观察报告_'+(mode==='ALL'?'全部维度':(mode==='QUICK'?'速答速览':mode))+'_'+nickname+'_'+dateFile()+'.png';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
   }
   $('saveBtn').addEventListener('click',function(){
@@ -1060,8 +1242,8 @@
   function closeModal(){$('imgModal').classList.remove('on')}
   $('closeModal').addEventListener('click',closeModal);
   $('modalMask').addEventListener('click',closeModal);
-  $('againBtn').addEventListener('click',function(){ans={};idx=0;R=null;locked=false;show('s-quiz');renderQuestion()});
-  $('homeBtn').addEventListener('click',function(){show('s-home');$('nick').value=nickname});
+  $('againBtn').addEventListener('click',function(){ans={};idx=0;R=null;locked=false;clearProgress();show('s-quiz');renderQuestion()});
+  $('homeBtn').addEventListener('click',function(){renderResume();show('s-home');$('nick').value=nickname});
 
   /* ---------- 示例报告：模拟填完全部题目 ---------- */
   function runDemo(){
