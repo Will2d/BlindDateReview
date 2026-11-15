@@ -371,31 +371,33 @@
     if(q.type==='量表5')return SCORE_CONFIG.boostDims[q.dim]||SCORE_CONFIG.scaleWeight;
     return SCORE_CONFIG.registerWeight;
   }
-  function halfOf(max){return Math.floor(max/2)}
+  /* 隐私项（不便填写 / 不适用）整题不计入：分子与分母同时剔除 */
   function totalScore(){
-    var maxSum=0,gotSum=0,halfCount=0,dimMap={};
+    var maxSum=0,gotSum=0,privacyCount=0,dimMap={};
     QS.forEach(function(q){
-      var w=weightOf(q),max=SCORE_CONFIG.base*w,got=0,half=false;
+      var w=weightOf(q),max=SCORE_CONFIG.base*w,got=0,privacy=false;
       if(q.scored){
         var a=ans[q.qid];
-        if(a==='N'||a==='不便填写'||a===undefined){got=halfOf(max);half=true}
+        if(a==='N'||a==='不便填写'||a===undefined)privacy=true;
         else got=(q.reverse?6-a:a)*w;
       }else{
         var v=ans[q.qid];
-        if(v===undefined)got=0;
-        else if(v==='不便填写'||v==='N'){got=halfOf(max);half=true}
+        if(v===undefined||v==='不便填写'||v==='N')privacy=true;
         else got=max;
       }
-      maxSum+=max;gotSum+=got;if(half)halfCount++;
-      if(!dimMap[q.dim])dimMap[q.dim]={max:0,got:0,half:0};
-      var d=dimMap[q.dim];d.max+=max;d.got+=got;if(half)d.half++;
+      if(privacy)privacyCount++;
+      else{maxSum+=max;gotSum+=got}
+      if(!dimMap[q.dim])dimMap[q.dim]={max:0,got:0,privacy:0};
+      var d=dimMap[q.dim];
+      if(privacy)d.privacy++;
+      else{d.max+=max;d.got+=got}
     });
     var dims={};
     Object.keys(dimMap).forEach(function(k){
       var d=dimMap[k];
-      dims[k]={score:Math.round(d.got/d.max*100),max:d.max,got:d.got,half:d.half};
+      dims[k]={score:d.max?Math.round(d.got/d.max*100):0,max:d.max,got:d.got,privacy:d.privacy};
     });
-    return {score:Math.round(gotSum/maxSum*100),maxSum:maxSum,gotSum:gotSum,halfCount:halfCount,dims:dims};
+    return {score:maxSum?Math.round(gotSum/maxSum*100):0,maxSum:maxSum,gotSum:gotSum,privacyCount:privacyCount,dims:dims};
   }
 
   function compute(){
@@ -432,7 +434,7 @@
       r.totalScore=totalScore();
       r.dimScores.forEach(function(d){
         var x=r.totalScore.dims[d.id];
-        d.score=x?x.score:0;d.maxScore=x?x.max:0;d.gotScore=x?x.got:0;d.halfCount=x?x.half:0;
+        d.score=x?x.score:0;d.maxScore=x?x.max:0;d.gotScore=x?x.got:0;d.privacyCount=x?x.privacy:0;
         d.index=d.score;
       });
       r.overallIndex=r.totalScore.score;
@@ -489,7 +491,7 @@
           return {h:x.q.short,p:t?t.high:'这一项相对更顺手，可以从这里继续建立自己的节奏。'};
         }),
         advice:dimensionAdvice(d.id,valid,scoredQs,rank),
-        gotScore:row?row.gotScore:0,maxScore:row?row.maxScore:0,halfCount:row?row.halfCount:0,
+        gotScore:row?row.gotScore:0,maxScore:row?row.maxScore:0,privacyCount:row?row.privacyCount:0,
         lowest:rank.length?rank[rank.length-1].q.short:'—'
       };
     });
@@ -712,29 +714,29 @@
     h+=scoreHTML('154 题合成总分',R.overallIndex,R.level,R.desc);
 
     h+='<div class="card rep-card"><h3 class="rep-sec-title">这个总分怎么来的</h3>'+
-      '<p class="rep-sec-sub">154 道题全部参与，按单题分值加权求和后归一化到 100 分</p>'+
+      '<p class="rep-sec-sub">154 道题作答后按单题分值加权汇总；隐私项不计入，其余归一化到 100 分</p>'+
       '<div class="stat-grid">'+
       '<div class="stat-box"><b>'+T.gotSum+'</b><small>实得 / '+T.maxSum+' 分</small></div>'+
-      '<div class="stat-box"><b>'+T.halfCount+'</b><small>按半分计</small></div>'+
+      '<div class="stat-box"><b>'+T.privacyCount+'</b><small>隐私项不计入</small></div>'+
       '<div class="stat-box"><b>154</b><small>参与题数</small></div></div>'+
       '<div class="arch-gname">计分规则</div>'+
       '<div class="arch-row"><span>自评量表题 80 道</span><span>1–5 分 × 权重 2；反向题按 6 − 原始分</span></div>'+
       '<div class="arch-row"><span>D5 自评题 6 道</span><span>权重提升至 3</span></div>'+
       '<div class="arch-row"><span>单选登记题 74 道</span><span>满分 5 分，按信息是否明确计分</span></div>'+
-      '<div class="arch-row"><span>选「不便填写」/「不适用」</span><span>得单题满分的一半，向下取整</span></div>'+
+      '<div class="arch-row"><span>选「不便填写」/「不适用」</span><span>该题为隐私项，不计入总分</span></div>'+
       '<p class="mini-note">登记题只判断"这一项有没有明确答案"，不按年龄、健康、民族、收入等答案内容评高低；D5 的 31 项登记题现已纳入计分。</p></div>';
 
     h+='<div class="card rep-card"><h3 class="rep-sec-title">七个维度得分</h3><p class="rep-sec-sub">同一套单题规则在维度内汇总，换算为 100 分制</p>';
     R.dimScores.forEach(function(d){
       h+='<div class="bar-row"><div class="bar-top"><b>'+d.id+' '+d.name+'</b><em>'+d.index+' / 100</em></div>'+
         '<div class="bar-track"><div class="bar-fill" style="width:'+d.index+'%"></div></div>'+
-        '<p class="bar-note">'+d.total+' 题 · 实得 '+d.gotScore+' / '+d.maxScore+(d.halfCount?' · '+d.halfCount+' 题半分':'')+(d.lowest&&d.lowest!=='—'?' · 最需练习：'+esc(d.lowest):'')+'</p></div>';
+        '<p class="bar-note">'+d.total+' 题 · 实得 '+d.gotScore+' / '+d.maxScore+(d.privacyCount?' · '+d.privacyCount+' 项隐私不计入':'')+(d.lowest&&d.lowest!=='—'?' · 最需练习：'+esc(d.lowest):'')+'</p></div>';
     });
     h+='</div>';
 
     h+='<div class="card rep-card"><h3 class="rep-sec-title">全局速览</h3><p class="rep-sec-sub">跨七个维度，看最顺手和最值得练的具体能力项</p>'+
       '<div class="stat-grid"><div class="stat-box"><b>'+R.valid.length+'</b><small>有效计分题</small></div>'+
-      '<div class="stat-box"><b>'+T.halfCount+'</b><small>半分题</small></div>'+
+      '<div class="stat-box"><b>'+T.privacyCount+'</b><small>隐私项</small></div>'+
       '<div class="stat-box"><b>'+R.filled.length+'</b><small>已填登记项</small></div></div>'+
       '<div class="arch-gname">全局最顺手的三项</div>';
     R.rank.slice(0,3).forEach(function(x,i){
@@ -799,6 +801,14 @@
     for(var i=0;i<str.length;i++){if(ctx.measureText(out+str.charAt(i)).width>maxW)break;out+=str.charAt(i)}
     return out===''?'':(out.length<str.length?out.slice(0,-1)+'…':out);
   }
+  function paintGrid(ctx,x,y,w,rows,cols,rowH,size,color){
+    if(!rows.length)return y;
+    var colW=w/cols;
+    rows.forEach(function(t,i){
+      line(ctx,cut(ctx,String(t),colW-12,size),x+(i%cols)*colW,y+Math.floor(i/cols)*rowH,size,color,400);
+    });
+    return y+Math.ceil(rows.length/cols)*rowH;
+  }
   function paint(ctx,W,H){
     var bg=ctx.createLinearGradient(0,0,0,H);
     bg.addColorStop(0,'#fff0f4');bg.addColorStop(.42,'#fff8f6');bg.addColorStop(1,'#fdf1f8');
@@ -840,7 +850,7 @@
     if(R.type==='dim')R.segments.forEach(function(g){bars.push({label:g.name,value:g.avg.toFixed(1)+' / 5',ratio:g.avg/5,note:groupWord(g.avg)})});
     else if(R.type==='all')R.dimScores.forEach(function(d){
       bars.push({label:d.id+' '+d.name,value:d.index+' / 100',ratio:d.index/100,
-        note:'实得 '+d.gotScore+' / '+d.maxScore+(d.halfCount?' · '+d.halfCount+' 题半分':'')+(d.scored>0?' · 最需练习：'+d.lowest:' · 信息明确度')});
+        note:'实得 '+d.gotScore+' / '+d.maxScore+(d.privacyCount?' · '+d.privacyCount+' 项隐私不计入':'')+(d.scored>0?' · 最需练习：'+d.lowest:' · 信息明确度')});
     });
     else ARCHIVE_GROUPS.forEach(function(g){
       var qs=R.regQs.filter(function(q){return archiveGroupOf(q)===g.name});
@@ -941,6 +951,40 @@
     });
     y+=ah+30;
 
+    /* 综合报告：完整报告明细，与页面七份维度详报一一对应 */
+    if(R.type==='all'){
+      y=line(ctx,'完整报告明细 · 七份维度详报',X+6,y+18,27,'#3d2f36',700)+24;
+      R.dimReports.forEach(function(dr){
+        var isD1=dr.scored===0;
+        var segRows=dr.segments.map(function(g){return g.name+' '+(isD1?Math.round(g.ratio*100)+'%':g.avg.toFixed(1))});
+        var itemRows=dr.scoredQs.map(function(q){
+          var s=R.scoreMap[q.qid];
+          return q.short+' '+(s===null||s===undefined?'—':s+'/5');
+        });
+        var tipRows=[];
+        dr.strengths.slice(0,1).forEach(function(t){tipRows.push('占优 '+t.h)});
+        dr.advice.slice(0,2).forEach(function(t){tipRows.push('建议 '+t.h)});
+        var extraRows=[];
+        if(isD1&&R.archive){
+          R.archive.strengths.slice(0,2).forEach(function(t){extraRows.push('占优 '+t.h)});
+          R.archive.attentions.slice(0,2).forEach(function(t){extraRows.push('留意 '+t.h)});
+          R.archive.must.slice(0,2).forEach(function(t){extraRows.push('对齐 '+t.h)});
+        }
+        var regRows=dr.regQs.map(function(q){return q.short+'：'+cut(ctx,regValue(q),110,18)});
+        var nRows=Math.ceil(segRows.length/3)+Math.ceil(itemRows.length/3)+Math.ceil(tipRows.length/3)+
+                  Math.ceil(extraRows.length/3)+Math.ceil(regRows.length/3);
+        var gh=90+nRows*24;card(ctx,X,y,CW,gh);
+        var gy=y+44;
+        gy=line(ctx,dr.id+' '+dr.name+'  ·  '+dr.index+'/100  ·  '+dr.total+' 题',X+36,gy,23,'#3d2f36',700)+26;
+        gy=paintGrid(ctx,X+36,gy,CW-72,segRows,3,24,18,'#6f5b64');
+        gy=paintGrid(ctx,X+36,gy,CW-72,itemRows,3,24,18,'#e9759c');
+        gy=paintGrid(ctx,X+36,gy,CW-72,tipRows,3,24,18,'#8a7680');
+        gy=paintGrid(ctx,X+36,gy,CW-72,extraRows,3,24,18,'#8a7680');
+        gy=paintGrid(ctx,X+36,gy,CW-72,regRows,3,24,18,'#8a7680');
+        y+=gh+26;
+      });
+    }
+
     /* 说明 */
     var dh=235;card(ctx,X,y,CW,dh);
     var dy=y+48;
@@ -948,7 +992,7 @@
     var note=R.type==='archive'
       ?'只覆盖「基本客观条件」一个维度，为客观情况登记与条件解读，不打分、不排名，不评价任何一方的条件，也不代表你在相亲市场的整体价值。报告含个人敏感信息，请自行保管。'
       :(R.type==='all'
-        ?'总分由 154 题加权合成；登记题按信息是否明确计分，不按答案内容评高低，选「不便填写」得一半分并向下取整。结果用于自我复盘，不代表整体价值。'
+        ?'总分由 154 题加权合成；登记题按信息是否明确计分，不按答案内容评高低，隐私项不计入总分。结果用于自我复盘，不代表整体价值。'
         :'只覆盖所选的一个维度，反映的是该维度内的自评状态，不代表你在相亲市场的整体价值。');
     wrap(ctx,note+'分数用于看见自己的习惯，不做好坏评判。',X+36,dy,CW-72,20,32,'#8a7680',400);
     y+=dh+34;
@@ -959,11 +1003,11 @@
   var saveLabel=isWeChat()?'生成报告图片':'下载报告图片';
   function buildCanvas(small){
     var W=750;
-    var tmp=document.createElement('canvas');tmp.width=W;tmp.height=5600;
+    var tmp=document.createElement('canvas');tmp.width=W;tmp.height=7500;
     var tc=tmp.getContext('2d');
-    var endY=paint(tc,W,5600),H=Math.ceil(endY)+20;
-    var cap=small?7000000:12000000,maxS=small?1.5:2;
-    var S=Math.max(1,Math.min(maxS,Math.sqrt(cap/(W*H)),6000/H));
+    var endY=paint(tc,W,7500),H=Math.ceil(endY)+20;
+    var cap=small?8000000:14000000,maxS=small?1.5:2;
+    var S=Math.max(1,Math.min(maxS,Math.sqrt(cap/(W*H)),7000/H));
     var c=document.createElement('canvas');c.width=Math.round(W*S);c.height=Math.round(H*S);
     var ctx=c.getContext('2d');ctx.scale(S,S);
     paint(ctx,W,H);
